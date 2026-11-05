@@ -69,6 +69,7 @@ private fun WaterViewHome() {
     var content by remember { mutableStateOf<ViewerContent>(ViewerContent.Empty) }
     var updateStatus by remember { mutableStateOf("업데이트 확인 안 함") }
     var updateUrl by remember { mutableStateOf<String?>(null) }
+    var updateRelease by remember { mutableStateOf<UpdateChecker.Release?>(null) }
     val updateScope = rememberCoroutineScope()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         selectedUri = uri
@@ -82,6 +83,7 @@ private fun WaterViewHome() {
     LaunchedEffect(Unit) {
         val release = UpdateChecker.latest()
         if (release != null && UpdateChecker.isNewer(release.version, BuildConfig.VERSION_NAME)) {
+            updateRelease = release
             updateUrl = release.pageUrl
             updateStatus = "새 버전 ${release.version}이 있습니다."
         }
@@ -102,7 +104,8 @@ private fun WaterViewHome() {
                     updateScope.launch {
                         updateStatus = "업데이트 확인 중…"
                         val release = UpdateChecker.latest()
-                        updateUrl = release?.pageUrl
+                        updateRelease = if (release != null && UpdateChecker.isNewer(release.version, BuildConfig.VERSION_NAME)) release else null
+                        updateUrl = updateRelease?.pageUrl
                         updateStatus = when {
                             release == null -> "업데이트를 확인하지 못했습니다."
                             UpdateChecker.isNewer(release.version, BuildConfig.VERSION_NAME) -> "새 버전 ${release.version}이 있습니다. 릴리스 페이지: ${release.pageUrl}"
@@ -111,6 +114,16 @@ private fun WaterViewHome() {
                     }
                 }) { Text("업데이트 확인") }
                 Text(updateStatus, style = MaterialTheme.typography.bodySmall)
+                updateRelease?.let { release ->
+                    Button(onClick = {
+                        updateScope.launch {
+                            updateStatus = "업데이트 다운로드 중…"
+                            runCatching { UpdateChecker.downloadAndInstall(context, release) }
+                                .onSuccess { updateStatus = "설치 확인 화면을 여는 중…" }
+                                .onFailure { updateStatus = "업데이트 실패: ${it.message ?: "알 수 없는 오류"}" }
+                        }
+                    }) { Text("업데이트 설치") }
+                }
                 updateUrl?.let { url ->
                     Button(onClick = {
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
