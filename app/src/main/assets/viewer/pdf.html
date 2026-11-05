@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- The policy in ViewerPolicy.kt, which says why each part is there. ViewerPolicyTest
+     keeps this copy word for word the same as that one, in every page. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<title>PDF document</title>
+<!-- Deliberately no viewport meta, unlike the other viewers. Without one the
+     WebView lays out at its default 980 CSS px and loadWithOverviewMode zooms
+     that down to fit, which on a Nothing Phone 2 puts one CSS px at about 1.1
+     device px and gives a pinch range of about 10x rather than 5x.
+
+     This used to be a sharpness argument as well. Every page was drawn at twice
+     the layout width so a pinch had spare pixels to magnify, and the 922 px a
+     width=device-width layout would lay out at was fewer of them. It is not
+     that any more: a page is drawn at the resolution the screen actually has,
+     and the part of it being looked at is drawn again at whatever zoom the
+     reader reaches, so the pinch range is the whole of what this width buys. -->
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="pdf-pages.css">
+<style>
+  /* The surround a page is read against. Warm, to match the rest of the app, and
+     matched on lightness rather than picked by eye: this is L* 29.0 where the Blue Grey
+     700 it replaces was 29.1, so a page sits against exactly as much contrast as it did
+     before and only the temperature has moved. */
+  body { background: #48443D; }
+
+  /* Turns off Chromium's own double tap zoom, which fits the block under the finger to the
+     screen and so took a page, one block as wide as the screen, in by a fifth. The app zooms a
+     double tap itself, in DoubleTapZoom.kt, and would zoom twice without this line. A pan is as
+     it was, and so is a pinch out; a pinch in at the fitted width, which the WebView can do
+     nothing with, is this page's: see the rule below. */
+  html { touch-action: manipulation; }
+
+  /* While the pages are shrunk below the screen's width the pinch is this page's, not the
+     WebView's: see "Zooming out" in pdf.mjs. pan-x pan-y keeps Chromium's double tap off as
+     manipulation does, and its pinch too, so a pinch out grows the pages back without the
+     WebView zooming over them. One finger scrolls as ever. */
+  html.vw-shrunk { touch-action: pan-x pan-y; }
+
+  /* The strip between two pages. One declaration, three consumers: .pg's margin draws
+     it, .vw-gap bridges it so a selection can cross it, and PAGE_PITCH counts it into
+     the draw and keep bands. They disagreeing is a bug in each of those three ways.
+     Each of the three multiplies it by --vw-shrink, so the column scales as one piece. */
+  :root { --pg-gap: 8px; }
+
+  /*
+   * How wide a page is drawn, as a fraction of the layout width: 1 at the fitted width,
+   * down to the floor pdf.mjs sets when the reader pinches in past it, issue #52.
+   *
+   * The WebView will not zoom out below its content's width, and a page is as wide as
+   * the layout, so at the fitted width a pinch in had nowhere to go. Past it this page
+   * shrinks its pages itself: the column's width, the gap between the pages, the text
+   * layer's type and its hit boxes all read this one property, so the words stay over
+   * the picture at every size. Written on the root by pdf.mjs, and 1 until it is.
+   *
+   * A width rather than CSS zoom, deliberately. Below about Chromium 128 a zoomed
+   * element's rect leaves its zoom out, which docx-pages.js has to correct for, and this
+   * file reads rects in a dozen places. A width is layout, and every rect is right on
+   * every engine this page runs on.
+   */
+  :root { --vw-shrink: 1; }
+
+  /*
+   * Where the document sits when there is less of it than there is screen.
+   *
+   * A single A4 page fitted to the width of a phone is about 1.4 screen widths tall
+   * where the screen is about 2.2, so a one-page PDF stood at the top with a third of
+   * the display left as surround below it. Every viewer of a fixed sheet puts one in
+   * the middle instead, imgweb.html here included, so this makes a page agree with a
+   * photograph.
+   *
+   * One static rule, and nothing measured, which is the whole reason it is written this
+   * way. min-height leaves the container free to grow, so a document taller than the
+   * screen has no free space, justify-content has nothing to distribute, and the layout
+   * is the one that was there before. Only a document that already fits moves.
+   *
+   * On #pages rather than on the body, where the same centring would be shorter to
+   * write. #vw-status is a child of the body and not of this, and is placed against
+   * the screen by app.css rather than by the flow, so the rendering card, the error
+   * card and the password prompt are no concern of this rule either way.
+   *
+   * Two details are load bearing. border-box, or the 8px of padding would fall outside
+   * the 100vh and give every short document sixteen pixels of rubber band to pull
+   * against. And flex: none, so that a column flex container can never decide to shrink
+   * a page out of the aspect-ratio it was measured at.
+   *
+   * 100vh, and not the --vw-fit that pptx.html and docx.html centre against, because
+   * here it is exactly right. Those two size a page from the document and can end up
+   * wider than the 980 CSS px this WebView lays out at, which moves the height the
+   * reader can see out from under 100vh; see vwFitHeight() in app.js. A .pg is
+   * width: 100%, so this file can never be wider than the layout viewport and the two
+   * numbers cannot come apart. Measured on the phone: innerHeight and 100vh both 1886.
+   */
+  #pages {
+    box-sizing: border-box;
+    padding: 8px 0;
+    min-height: 100vh;
+    /* Less the room kept for the title bar above, or a short document would scroll by that much */
+    min-height: calc(100vh - var(--vw-top, 0px));
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    /*
+     * The column itself is what shrinks, centred, and every page fills it. The shrink
+     * goes on the column rather than on each page because the column is also what a
+     * pinch scales as a picture while the fingers move, and the picture must never be
+     * wider than the layout: the WebView fits a document wider than its layout, as
+     * overview mode fits a wide page, so a pinch out from shrunk pages that scaled the
+     * full-width column past the layout's edge had the WebView zooming out to fit it,
+     * frame for frame, and snapping back when the fingers lifted. Measured in landscape
+     * on a phone, 0.81 at the fitted width down to 0.41 and back. A column as wide as
+     * its pages, scaled by at most the fitted width over the shrunk one, reaches the
+     * layout's width and never passes it.
+     */
+    width: calc(100% * var(--vw-shrink));
+    margin: 0 auto;
+  }
+  #pages > .pg {
+    flex: none;
+    margin-bottom: calc(var(--pg-gap) * var(--vw-shrink));
+  }
+
+  /* While the fingers move the column is scaled as a picture, and laid out at the new
+     width once they lift: see settle() in pdf.mjs. */
+  #pages.vw-moving { will-change: transform; }
+
+  /* Night mode is in pdf-pages.css. The picture on a page is turned over by recolour() in the
+     module, against the filter at the top of the body. */
+  html.vw-night .pg:last-child {
+    box-shadow: 0 calc(-1 * var(--pg-edge)) 0 var(--pg-edge-colour),
+                0 var(--pg-edge) 0 var(--pg-edge-colour);
+  }
+  /*
+   * The cards go over too, and they have to be named here rather than left to
+   * app.css. Those tokens turn over with the *system* scheme, and night mode exists
+   * for a reader whose system is not dark: without this, asking for the password on
+   * an encrypted PDF puts a card most of the screen wide, white, with a white input
+   * in it, on an otherwise black page, and it stays there until they type.
+   *
+   * The values are app.css's own night tokens, so a phone that is in dark mode sees
+   * no change and the two routes agree.
+   */
+  html.vw-night .vw-status { background: #2D2A23; color: #E7E2D9; }
+  html.vw-night .vw-status.vw-error { background: #8C1D18; color: #F9DEDC; }
+  html.vw-night .vw-ask-input { background: #17130A; color: #E7E2D9; border-color: #6B6250; }
+  html.vw-night .vw-ask-alert { color: #F9DEDC; }
+  html.vw-night .vw-simple-btn { background: #F9DEDC; color: #8C1D18; }
+
+  /* Holds the filter and nothing else. Copied from how pdf.js hides the filters its
+     own high-contrast mode builds, because that is the same engine resolving the same
+     kind of reference from the same place. */
+  #vw-filters {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    visibility: hidden;
+    contain: strict;
+    z-index: -1;
+  }
+  /*
+   * A page is a box holding two layers: the canvas that is the picture of it, and
+   * the text layer that is the words in it, the second sitting exactly on top of
+   * the first. The box carries the size for both, which is what makes it the thing
+   * the observers watch and the thing that holds its shape while empty.
+   *
+   * The canvas used to be this box itself. It stopped being so the text layer had
+   * something to be positioned against: absolute positioning needs a positioned
+   * ancestor, and a canvas cannot be one for something outside it.
+   */
+  .pg {
+    max-width: 100%;
+    /*
+     * The shape of a page that has not been drawn yet.
+     *
+     * A canvas with no width or height attribute is 300x150, the HTML default, and
+     * an undrawn page standing at 300x150 was the whole of the bug this viewer had:
+     * visible as a column of small white boxes when a reader outran the renderer,
+     * and small enough that the look-ahead band held about fifty pages where it
+     * should hold a handful, every one of which began rendering at once.
+     *
+     * Page 1's shape is published here as a custom property once the document opens,
+     * so a 357-page document costs one write rather than one per page, and a page
+     * that has been drawn overrides it inline with its own. The fallback is A4
+     * portrait and applies only between the boxes existing and page 1 being
+     * measured, which is over before anything has been drawn.
+     *
+     * On the box rather than the canvas now. The canvas fills the box, so a released
+     * page whose canvas is 0x0 still stands at its full height and nothing moves.
+     */
+    aspect-ratio: var(--pg-ratio, 0.7071);
+  }
+
+  /*
+   * The strip between two pages, made part of the page above it.
+   *
+   * That gap is .pg's own margin, so it belongs to #pages and lies inside no text
+   * layer. A finger crossing it is over no span, and Blink answers a container with
+   * nothing in flow with the same position wherever it is asked, which here is a whole
+   * page. Traced at a page boundary: a selection went from 236 characters to 3895 in
+   * one event and the view scrolled 804px to follow it, which looked like a scroll bug
+   * and was the original runaway surviving in the one place padRows() cannot reach.
+   *
+   * A sibling of the text layer rather than part of it, and this is the whole reason it
+   * is a separate element. pdf.js positions every span with a percentage top, so making
+   * the layer eight pixels taller moves every word down by a fraction of eight pixels,
+   * most at the foot of the page. That was tried, and the selection came away from the
+   * text everywhere. The layer's height is load bearing and cannot be touched; a
+   * sibling inside .pg costs nothing and escapes the layer's overflow: clip.
+   *
+   * Last in .pg, so that in document order it falls after every word on this page and
+   * before the first word of the next, which is what a caret landing in it should mean.
+   */
+  .pg > .vw-gap {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: calc(var(--pg-gap) * var(--vw-shrink));
+    /*
+     * Selectable, and that is a guard rather than a statement of the default.
+     *
+     * Nothing here sets user-select: none on an ancestor of this, so the caret lands in
+     * it either way; measured, and the seam reads identically with this line reverted.
+     * It is declared so that staying true is a property of this rule rather than of
+     * what the rest of the stylesheet happens not to say, the same argument as the
+     * spacing properties on .hiddenCanvasElement. Without it, an ancestor rule added
+     * later would silently reopen the strip.
+     */
+    user-select: text;
+  }
+
+  .pg > canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /*
+   * The sharp patch.
+   *
+   * The canvas above is drawn once, at the resolution the screen has with the page
+   * fitted to its width, and pinching in is the compositor magnifying that bitmap.
+   * Past a point it has no pixels left to magnify, so the part of the page being
+   * looked at is drawn a second time, at the zoom the reader has actually reached,
+   * and laid over the top. That second picture is this.
+   *
+   * Placed in percentages of the box rather than in pixels. .pg is a percentage width
+   * carrying an aspect-ratio, so its box is fractional; a percentage resolves against
+   * the same fractional box the canvas underneath fills, where px would round away
+   * from it and leave the two pictures half a device pixel apart, which is exactly the
+   * detail this exists to recover. Left, top, width and height are written inline once
+   * the tile is drawn, and beat the rule above.
+   *
+   * z-index is stated rather than left to tree order, because the text layer carries
+   * one too and the words have to stay over the picture.
+   *
+   * pointer-events and aria-hidden say the same thing twice, once to the finger and once
+   * to a screen reader: this is a second copy of a picture that is already there, and it
+   * is not a thing in its own right. Without the first it would sit between the text
+   * layer and a touch meant for selecting a word; without the second a reader would be
+   * told about two canvases per page instead of one.
+   */
+  .pg > canvas.tile {
+    position: absolute;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /*
+   * The text layer: pdf.js's own, positioned over the picture.
+   *
+   * These rules are not decoration, they are the contract the TextLayer class in
+   * lib/pdf.min.mjs is written against. It sets left, top, font-size and a transform
+   * inline on each span and expects the stylesheet to supply the rest, so a viewer
+   * that omits them gets its text stacked in the corner rather than laid over the
+   * page. Re-check them when pdf.js moves; see "Before upgrading pdf.js" in
+   * docs/VENDORED.md.
+   *
+   * The scale hook this build reads is --total-scale-factor. The older
+   * --scale-factor does not appear anywhere in 6.3.289 and setting it does nothing,
+   * which fails quietly as text half a page out of place.
+   */
+  .textLayer {
+    position: absolute;
+    /*
+     * inset is what sizes this layer, and that is not the arrangement pdf.js intends.
+     *
+     * setLayerDimensions() writes width and height inline on this element as
+     * round(down, var(--total-scale-factor) * <pageWidth>px, var(--scale-round-x)).
+     * --scale-round-x is upstream's, is not defined here, and an undefined var()
+     * makes the whole declaration invalid at computed-value time, so both fall back
+     * to auto and the insets decide. That is the better answer rather than an
+     * accident worth repairing: .pg is a percentage width with an aspect-ratio, so
+     * its box is fractional, and defining --scale-round-x would make those inline
+     * declarations valid, beat right and bottom, and floor a 1268.235px box to 1268px
+     * behind an overflow: clip.
+     *
+     * So leave it undefined, and know that this line is load bearing. A pdf.js that
+     * stops writing round() would put the two back in charge and nothing here would
+     * say so.
+     */
+    inset: 0;
+    overflow: clip;
+    line-height: 1;
+    text-align: initial;
+    text-size-adjust: none;
+    forced-color-adjust: none;
+    transform-origin: 0 0;
+    caret-color: CanvasText;
+    z-index: 0;
+
+    /* Read by the span rule below. --total-scale-factor is set per page in
+       textLayerFor(); the other two exist because pdf.js's own stylesheet defines
+       the size and transform in terms of them. Times --vw-shrink, since the box this
+       layer fills is that fraction of the width --total-scale-factor was worked out
+       for: pdf.js positions each span in percent, so the type is the one thing that
+       has to be told the page shrank. */
+    --min-font-size: 1;
+    --text-scale-factor:
+      calc(var(--total-scale-factor) * var(--min-font-size) * var(--vw-shrink));
+    --min-font-size-inv: calc(1 / var(--min-font-size));
+  }
+
+  .textLayer span,
+  .textLayer br {
+    /*
+     * The words are invisible and still selectable, because the picture underneath
+     * already shows them. Colour them and every glyph would be drawn twice, once by
+     * the renderer and once by the browser, in fonts that do not match.
+     *
+     * Held in a custom property rather than written here, the way GrapheneOS's
+     * PdfViewer does it, so the layer can be made visible to look at. Setting
+     * --text-layer-foreground to red on the root paints the words this layer thinks
+     * are there over the ones the renderer drew, which is the only direct way to see
+     * whether the two agree. There is no control for it: it is a debugging handle,
+     * reachable from devtools, and it costs one variable to leave in.
+     */
+    color: var(--text-layer-foreground, transparent);
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+  }
+
+  /*
+   * Where a span gets its size and width, and the half of the contract that is easy
+   * to miss.
+   *
+   * pdf.js writes only left, top, font-family and three custom properties on each
+   * span: --font-height, --scale-x and --rotate. It never writes font-size or
+   * transform. Those are the stylesheet's job, and without them every span renders at
+   * the inherited 16px with no horizontal scaling, which does not throw and does not
+   * look broken, because the text is transparent and the picture underneath is still
+   * correct. It shows up only when something draws on the text: a selection that
+   * covers the wrong words, or a search hit whose highlight stops short of the end of
+   * the word it found.
+   *
+   * --scale-x is measured, not declared: pdf.js renders the run in whatever font the
+   * device actually has, measures it, and divides the width the PDF asked for by the
+   * width it got. That is why this has to be applied rather than approximated, and
+   * why the same page is right on two phones with different fonts installed.
+   *
+   * The selector is pdf.js's own. Marked content arrives as a wrapping element that
+   * is display:contents, so its spans are addressed separately rather than by depth.
+   */
+  .textLayer > :not(.markedContent),
+  .textLayer .markedContent span:not(.markedContent) {
+    z-index: 1;
+    --font-height: 0;
+    --scale-x: 1;
+    --rotate: 0deg;
+    font-size: calc(var(--text-scale-factor) * var(--font-height));
+    transform:
+      rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+  }
+
+  .textLayer .markedContent { display: contents; }
+
+  /*
+   * The colour a selection is drawn in, which is the viewer's rather than the
+   * platform's. pdf.js styles only the background here and lets the selected text keep
+   * whatever colour it had, which in this layer is transparent, because the picture
+   * underneath is already showing the words. Left out, a selection comes back in the
+   * WebView's own grey.
+   *
+   * The second rule is for the line breaks pdf.js puts between runs. They carry no
+   * text of their own, so a highlight on one is a block of colour past the end of a
+   * line.
+   */
+  .textLayer ::selection {
+    background: rgba(33, 150, 243, 0.35);
+  }
+  .textLayer br::selection { background: transparent; }
+
+  /* An image standing in for text is not text to select. */
+  .textLayer span[role="img"] { user-select: none; cursor: default; }
+
+  /*
+   * pdf.js's measuring canvas, which is not part of any page.
+   *
+   * TextLayer appends one of these to the body and reads glyph widths off it to
+   * compute --scale-x. Upstream's stylesheet hides it and ours did not, so it stood
+   * in the body at the HTML default 300x150 until the first measurement zeroed its
+   * backing store. A 2D context does not care about layout, which is why it can be
+   * hidden and still measure.
+   *
+   * The two spacing properties are upstream's too, and are the half worth
+   * understanding: this element inherits from the body, and inherited letter-spacing
+   * reaches measureText and corrupts the width every --scale-x is derived from.
+   * Nothing here sets either, so nothing is wrong today. They are declared so that
+   * stays a property of this rule rather than of what the rest of the stylesheet
+   * happens not to say.
+   */
+  .hiddenCanvasElement {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    display: none;
+    letter-spacing: normal;
+    word-spacing: normal;
+  }
+
+  /*
+   * Search hits. Registered as Ranges through CSS.highlights rather than by wrapping
+   * the text in elements: wrapping would split the spans pdf.js positioned and move
+   * the words off the picture, which is the one thing the text layer must never do.
+   */
+  ::highlight(vw-find) {
+    background-color: rgba(255, 213, 79, 0.45);
+  }
+  ::highlight(vw-find-active) {
+    background-color: rgba(255, 145, 0, 0.62);
+  }
+
+  /*
+   * This page is not in the coordinate space app.css writes its card for. There is
+   * no viewport meta (see the note in the head), so the WebView lays out at 980 CSS
+   * px and loadWithOverviewMode zooms that down to fit, which shrinks a card written
+   * in dp along with everything else. app.css multiplies the card back up by this;
+   * the number, and why it is this number, is documented beside the token there. It
+   * is used again below by the password prompt, which is this file's own.
+   */
+  :root { --vw-zoom: 2.75; }
+
+  /* The password prompt. Left in this file rather than app.css because a
+     password is a PDF concern: no other viewer here can be handed an encrypted
+     document it knows how to unlock. */
+  .vw-ask { text-align: left; }
+  .vw-ask-title { font-weight: 600; margin-bottom: calc(6px * var(--vw-zoom)); }
+  .vw-ask-label {
+    display: block;
+    font-size: calc(13px * var(--vw-zoom));
+    opacity: 0.85;
+    margin-bottom: calc(10px * var(--vw-zoom));
+  }
+  /* The retry line, in the error red rather than the label's grey: it reports
+     something that went wrong, where the label only instructs. */
+  .vw-ask-alert {
+    display: block;
+    font-size: calc(13px * var(--vw-zoom));
+    color: #8c1d18;
+    margin-bottom: calc(10px * var(--vw-zoom));
+  }
+  .vw-ask-row { display: flex; gap: calc(8px * var(--vw-zoom)); }
+  .vw-ask-input {
+    /* min-width:0 or the input refuses to shrink under its intrinsic size and
+       pushes the button out of the card on a narrow layout. */
+    flex: 1 1 auto;
+    min-width: 0;
+    font: inherit;
+    /* Stated rather than left to fall out of font and padding, which lands at
+       about 36 dp once zoomed where Android asks for 48. Sized at the 0.37 end,
+       where the zoom is smallest and the target is therefore tightest. */
+    box-sizing: border-box;
+    min-height: calc(48px * var(--vw-zoom));
+    padding: 0 calc(10px * var(--vw-zoom));
+    border: calc(1px * var(--vw-zoom)) solid #CFC5B2;
+    border-radius: calc(6px * var(--vw-zoom));
+    background: #fff;
+    color: #1E1B15;
+  }
+  .vw-ask-btn {
+    flex: 0 0 auto;
+    font: inherit;
+    box-sizing: border-box;
+    min-height: calc(48px * var(--vw-zoom));
+    padding: 0 calc(16px * var(--vw-zoom));
+    border: 0;
+    border-radius: calc(6px * var(--vw-zoom));
+    /* The brand accent, like every other primary action in the app. */
+    background: #AF2D18;
+    color: #fff;
+  }
+
+  /* The card's button for the simple view, with plain px first because only old engines see it.
+     At night it takes the card's ink, since the accent hardly shows on the dark red card. */
+  .vw-simple-btn {
+    display: block;
+    width: 100%;
+    margin-top: 14px;
+    margin-top: calc(14px * var(--vw-zoom));
+    font: inherit;
+    font-weight: 500;
+    box-sizing: border-box;
+    min-height: 48px;
+    min-height: calc(48px * var(--vw-zoom));
+    padding: 0 16px;
+    padding: 0 calc(16px * var(--vw-zoom));
+    border: 0;
+    border-radius: 6px;
+    border-radius: calc(6px * var(--vw-zoom));
+    background: #AF2D18;
+    color: #fff;
+  }
+  .vw-simple-btn:disabled { opacity: 0.6; }
+  .vw-simple-caveat {
+    margin-top: 8px;
+    margin-top: calc(8px * var(--vw-zoom));
+    font-size: 13px;
+    font-size: calc(13px * var(--vw-zoom));
+    opacity: 0.85;
+  }
+  @media (prefers-color-scheme: dark) {
+    .vw-simple-btn { background: #F9DEDC; color: #8C1D18; }
+  }
+</style>
+</head>
+<body>
+<!--
+ * The colour a page is turned over with, issue #19.
+ *
+ * invert(1) on its own flips lightness and hue together, so a blue heading comes back
+ * orange and a red curve comes back cyan. This is invert composed with
+ * hue-rotate(180deg), spelled out rather than asked for by name: ctx.filter can only
+ * reference a filter element, and a matrix written here is the same matrix on every
+ * engine, where a named function is whatever that engine implements.
+ *
+ * All three rows sum to -1, which with the +1 in the offset column sends a grey g to
+ * 1 - g: the same distance from the other end, and still grey rather than picking up a
+ * cast. That is the invariant to check if this is ever edited. White
+ * paper lands on black, body text at 20,20,20 lands on 235,235,235, and a heading at
+ * 0,119,199 lands on 56,175,255 with its hue held at 204 degrees and only its
+ * lightness moved, 0.39 to 0.61.
+ *
+ * sRGB is not the default and is not optional. The SVG default is linearRGB, which
+ * would change the lightness response and read the offset column in the wrong space.
+ -->
+<div id="vw-filters" aria-hidden="true">
+  <svg width="0" height="0"><defs>
+    <filter id="vw-invert" color-interpolation-filters="sRGB">
+      <feColorMatrix type="matrix" values="
+         0.574 -1.430 -0.144 0 1
+        -0.426 -0.430 -0.144 0 1
+        -0.426 -1.430  0.856 0 1
+         0      0      0     1 0"/>
+    </filter>
+  </defs></svg>
+</div>
+<div id="vw-status" class="vw-status vw-wait">Rendering document…</div>
+<div id="pages"></div>
+<script src="app.js"></script>
+<script src="pdf-setup.js"></script>
+<script nomodule src="pdf-nomodule.js"></script>
+<script type="module" src="pdf.mjs"></script>
+</body>
+</html>

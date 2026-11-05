@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Tablet sizes for the welcome block. At phone scale the whole thing sat as a small
+     card in the middle of a 1280dp screen: not broken, but plainly a phone layout being
+     shown on something else. The type comes from the Material scale and does not change,
+     so only the drawn elements do.
+-->
+<resources>
+    <dimen name="welcome_tile_size">76dp</dimen>
+    <dimen name="welcome_tile_text">19sp</dimen>
+    <dimen name="welcome_tile_gap">8dp</dimen>
+    <dimen name="welcome_action_min_width">340dp</dimen>
+</resources>

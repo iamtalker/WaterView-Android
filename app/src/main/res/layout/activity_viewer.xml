@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurface"
+        android:elevation="4dp"
+        app:menu="@menu/viewer_menu"
+        app:navigationContentDescription="@string/back"
+        app:navigationIcon="@drawable/ic_back"
+        app:subtitleTextAppearance="?attr/textAppearanceBodySmall"
+        app:titleTextAppearance="?attr/textAppearanceTitleMedium" />
+
+    <!-- Every control in the bar is at least 48dp each way, the smallest target Android's
+         guidelines and Play's accessibility scan accept. The buttons were 44 and the box 45
+         until 2026-09-19, which AccessibilityTest had claimed to check and never had. -->
+    <LinearLayout
+        android:id="@+id/searchBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="?attr/colorSurface"
+        android:elevation="4dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="4dp"
+        android:visibility="gone">
+
+        <EditText
+            android:id="@+id/searchInput"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="@string/search_in_document"
+            android:imeOptions="actionSearch"
+            android:inputType="text|textNoSuggestions"
+            android:maxLines="1"
+            android:minHeight="48dp"
+            android:importantForAutofill="no" />
+
+        <TextView
+            android:id="@+id/searchCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:accessibilityLiveRegion="polite"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+
+        <ImageButton
+            android:id="@+id/searchPrev"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/previous_match"
+            android:src="@drawable/ic_up" />
+
+        <ImageButton
+            android:id="@+id/searchNext"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/next_match"
+            android:src="@drawable/ic_down" />
+
+        <ImageButton
+            android:id="@+id/searchClose"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/close_search"
+            android:src="@drawable/ic_close" />
+    </LinearLayout>
+
+    <!-- Sits between the toolbar and the document so a long save reports itself
+         without covering what is being read. Gone unless a copy is running. -->
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/saveProgress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        app:trackCornerRadius="0dp" />
+
+    <!-- The document, and the things that float over it.
+
+         The overlays are siblings of the container rather than children of it because
+         showRendererGone empties the container, and a page number left standing over
+         the card that replaces a document would be a claim about something no longer
+         on screen. -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <FrameLayout
+            android:id="@+id/container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- The fast-scroll track and the thumb that rides it. The track is 48dp wide
+             so the grab is a legal touch target, though only 6dp of it is ever drawn,
+             and it is gone unless there is enough document to be worth scrubbing. A
+             touch on the strip that misses the thumb is handed back so it reaches the
+             document instead, which is where a right thumb scrolling expects it to go.
+             Both use end gravity, so under RTL they move to the left edge, which is
+             also where the system puts a scrollbar.
+
+             Invisible rather than gone, and that is load bearing. A gone view is never
+             measured, so the track would have no height, and the height of the track is
+             the thing the thumb's size and position are worked out from: gone here means
+             the thumb can never appear at all. Invisible it is laid out all along and
+             still takes no touches, because a view only receives them while visible,
+             which is exactly the behaviour wanted when there is nothing to grab. -->
+        <View
+            android:id="@+id/fastScrollTrack"
+            android:layout_width="48dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="end"
+            android:importantForAccessibility="no"
+            android:visibility="invisible" />
+
+        <View
+            android:id="@+id/fastScrollThumb"
+            android:layout_width="6dp"
+            android:layout_height="@dimen/fast_scroll_thumb_min"
+            android:layout_gravity="end|top"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/scroll_thumb"
+            android:importantForAccessibility="no"
+            android:visibility="invisible" />
+
+        <!-- Which page of a PDF is on screen. One readout, in one place, whether the
+             document is being scrolled or the thumb dragged.
+
+             Deliberately not a live region: the
+             counter changes on every page crossed during a fling, and a region would
+             read every one of them out. It is focusable and labelled instead, so a
+             screen reader answers the question when asked rather than continuously. -->
+        <TextView
+            android:id="@+id/pageIndicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/page_pill_bg"
+            android:elevation="3dp"
+            android:focusable="true"
+            android:gravity="center"
+            android:minHeight="48dp"
+            android:minWidth="56dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:textAppearance="?attr/textAppearanceLabelLarge"
+            android:textColor="#FFFFFF"
+            android:visibility="gone" />
+    </FrameLayout>
+</LinearLayout>

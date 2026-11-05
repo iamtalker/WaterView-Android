@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- The policy in ViewerPolicy.kt, which says why each part is there. ViewerPolicyTest
+     keeps this copy word for word the same as that one, in every page. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D model</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  /* A model is shown on something, as a slide or a photo is, so the ground is dark and
+     stays dark whatever the phone's theme: see the note at the head of test_theme.py.
+     model.js reads this colour back to clear the canvas with, so it is said only here. */
+  html, body { height: 100%; overflow: hidden; }
+  body { background: #343029; }
+
+  /* The whole screen, and every touch on it the page's: turning and pinching are the
+     model's, never a scroll or a zoom of the page. */
+  #model {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+    outline: none;
+  }
+
+  /* The model's size, in the one place, and out of the way of every touch. */
+  #size {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: 14px;
+    text-align: center;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    color: rgba(231, 226, 217, 0.75);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="model" role="img" aria-label="3D model"></canvas>
+<div id="size" aria-hidden="true"></div>
+<div id="vw-status" class="vw-status vw-wait">Opening model…</div>
+<script src="app.js"></script>
+<script src="model-stl.js"></script>
+<script src="model.js"></script>
+</body>
+</html>

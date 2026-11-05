@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_search"
+        android:icon="@drawable/ic_search"
+        android:title="@string/search_in_document"
+        android:visible="false"
+        app:showAsAction="ifRoom" />
+    <!-- A book's two, hidden until epub.html says the book has opened. Its contents list has a
+         button of its own on the page, at the top of a chapter, which is seldom where a
+         reader is. Issue #50. -->
+    <item
+        android:id="@+id/action_contents"
+        android:title="@string/contents"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_text_size"
+        android:title="@string/text_size"
+        android:visible="false"
+        app:showAsAction="never" />
+    <!-- Hidden until pdf.html says how many pages there are, the way the search item
+         waits for something searchable. It is also the route a screen reader takes to
+         this, since the pill it sits beside can be faded out. -->
+    <item
+        android:id="@+id/action_go_to_page"
+        android:title="@string/go_to_page"
+        android:visible="false"
+        app:showAsAction="never" />
+    <!-- Turns a document's pages over for reading in the dark: a PDF's since issue #19, a
+         Word document's since #47. Hidden for every other format. -->
+    <item
+        android:id="@+id/action_night_mode"
+        android:checkable="true"
+        android:title="@string/night_mode"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_share"
+        android:icon="@drawable/ic_share"
+        android:title="@string/share_file"
+        app:showAsAction="ifRoom" />
+    <!-- A photo in a folder added in WaterView, from Android 11, where Android moves it to its trash
+         after its own prompt. The bin is the one the home screen's swipe uncovers, tinted here as
+         the share icon is. Issue #75. -->
+    <item
+        android:id="@+id/action_delete"
+        android:icon="@drawable/ic_delete"
+        android:title="@string/delete_photo"
+        android:visible="false"
+        app:iconTint="?attr/colorOnSurface"
+        app:showAsAction="ifRoom" />
+    <!-- A photo the tiling view draws, turned a quarter turn clockwise for each tap, to look at.
+         Issue #71. After Share and Delete, which photo viewers keep a tap away, so on a phone's
+         bar, with room for two buttons beside the menu, it goes into the menu among a folder's
+         photos, where Delete is there too. -->
+    <item
+        android:id="@+id/action_rotate"
+        android:icon="@drawable/ic_rotate"
+        android:title="@string/rotate_photo"
+        android:visible="false"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_save_copy"
+        android:title="@string/save_copy"
+        app:showAsAction="never" />
+    <!-- A PDF and the paper documents, on a phone that can print: see printRoute -->
+    <item
+        android:id="@+id/action_print"
+        android:title="@string/print"
+        android:visible="false"
+        app:showAsAction="never" />
+    <!-- A zip's list only, and only where some of its names had no code page of their own and
+         one had to be guessed: everywhere else choosing one would change nothing. -->
+    <item
+        android:id="@+id/action_name_encoding"
+        android:title="@string/name_encoding"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_open_folder"
+        android:title="@string/show_in_file_manager"
+        android:visible="false"
+        app:showAsAction="never" />
+</menu>

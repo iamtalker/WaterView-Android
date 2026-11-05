@@ -1,0 +1,73 @@
+package kr.iamtalker.waterview
+
+import android.content.Context
+import androidx.core.content.edit
+
+/**
+ * The reader's own preferences, as opposed to [Recents], which is a record of what
+ * they opened.
+ *
+ * WaterView has never had a settings screen and does not want one; settings here persist
+ * across opens because reading preferences and view modes are not things you want to
+ * re-select each time.
+ *
+ * Not backed up: `allowBackup="false"` in the manifest covers this file along with the
+ * recents list, for the reason given there.
+ */
+object Settings {
+
+    private const val PREFS = "viewer"
+    private const val KEY_NIGHT = "night"
+    private const val KEY_SORT_ORDER = "folder_sort_order"
+    private const val KEY_BOOK_TEXT = "book_text_size"
+
+    /**
+     * The sizes a book's text can be set to, as a percentage of the size it opens at. Nine
+     * steps, each about a seventh larger than the one before, from a little under the book's
+     * own size to two and a half times it. Past that a phone holds three words to a line,
+     * and pinching is the better tool.
+     */
+    val BOOK_TEXT_SIZES = intArrayOf(80, 90, 100, 115, 130, 150, 175, 200, 250)
+
+    enum class SortOrder(val labelRes: Int) {
+        NAME_AZ(R.string.sort_name_az),
+        NAME_ZA(R.string.sort_name_za),
+        NEWEST(R.string.sort_newest),
+        OLDEST(R.string.sort_oldest),
+        LARGEST(R.string.sort_largest),
+        SMALLEST(R.string.sort_smallest)
+    }
+
+    /** Whether PDF pages are drawn turned over. See issue #19 and `pdf.html`. */
+    fun night(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_NIGHT, false)
+
+    fun setNight(context: Context, on: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit { putBoolean(KEY_NIGHT, on) }
+    }
+
+    /** The size of a book's text, one of [BOOK_TEXT_SIZES]. The same for every book. */
+    fun bookTextSize(context: Context): Int {
+        val kept = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_BOOK_TEXT, 100)
+        return if (kept in BOOK_TEXT_SIZES) kept else 100
+    }
+
+    fun setBookTextSize(context: Context, percent: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit { putInt(KEY_BOOK_TEXT, percent) }
+    }
+
+    fun sortOrder(context: Context): SortOrder {
+        val name = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_SORT_ORDER, SortOrder.NAME_AZ.name)
+        return runCatching { SortOrder.valueOf(name ?: SortOrder.NAME_AZ.name) }
+            .getOrDefault(SortOrder.NAME_AZ)
+    }
+
+    fun setSortOrder(context: Context, order: SortOrder) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit { putString(KEY_SORT_ORDER, order.name) }
+    }
+}

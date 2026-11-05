@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The floating page readout.
+
+     Dark with light text in both themes, and deliberately not a theme colour pair.
+     What sits behind this is the document, not the app: a white PDF page, a white
+     spreadsheet, a slate slide. colorSurfaceInverse was the first answer and it is
+     wrong for exactly that reason, because in dark mode it inverts to near-white and
+     puts a pale pill on white paper. The hairline stroke is what separates it from a
+     dark slide, where the fill alone would not.
+
+     Inset rather than a bare shape because the pill is tappable. The view is 48dp tall
+     so the touch target is a legal one; the 8dp either side keeps what is drawn at
+     32dp, which is the size it should look. The elevation shadow follows the inset
+     shape too, since InsetDrawable passes getOutline through to what it wraps. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetTop="8dp"
+    android:insetBottom="8dp">
+    <shape android:shape="rectangle">
+        <solid android:color="#E62A2D31" />
+        <stroke android:width="1dp" android:color="#33FFFFFF" />
+        <corners android:radius="16dp" />
+    </shape>
+</inset>

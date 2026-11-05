@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Sizes that more than one file has to agree on.
+
+     The welcome block is the bulk of it: everything else on the home screen is a
+     Material component at its standard size, and this block is the one thing drawn to
+     fit a screen, so it is the one thing with a size per screen. values-sw600dp holds
+     the tablet set.
+-->
+<resources>
+    <!-- Matches the 48dp badge on a file row, plus a little, because these are the
+         subject of the screen here rather than a marker beside a filename. -->
+    <dimen name="welcome_tile_size">56dp</dimen>
+    <dimen name="welcome_tile_text">14sp</dimen>
+    <!-- Margin on every side, so the gap between two tiles is twice this. -->
+    <dimen name="welcome_tile_gap">6dp</dimen>
+    <!-- A minimum rather than a width, so a large system font size grows the button
+         instead of ellipsising its label. -->
+    <dimen name="welcome_action_min_width">240dp</dimen>
+
+    <!-- Above and below a box with a field to type in, a zip file's password or a page to go
+         to, in place of Material's 80dp: with the keyboard up, 80 left the field under 48dp on a
+         731dp phone. The same as a dialog's inset at its sides. -->
+    <dimen name="field_box_inset">24dp</dimen>
+
+    <!-- The scroll thumb's floor, and so its height in the layout: proportional alone
+         is two pixels on a 357-page document. syncFastScroll reads the same value, so
+         the two cannot drift. -->
+    <dimen name="fast_scroll_thumb_min">48dp</dimen>
+</resources>

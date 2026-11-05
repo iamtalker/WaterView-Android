@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nothing of WaterView's goes into a cloud backup or a phone-to-phone transfer.
+
+     allowBackup="false" in the manifest used to say that on its own. From Android 12 it
+     governs cloud backup only, and a transfer to a new phone reads these rules instead;
+     with no rules at all it carries everything outside the cache and no_backup folders,
+     which here means shared_prefs/recents.xml: file names, content URIs and the times
+     they were opened. Some manufacturers honour allowBackup for transfers and some do not.
+
+     Every domain is excluded by name. A section with no rules in it does not mean
+     "nothing": Android reads it as all of the app's data minus the excludes, so an
+     empty <device-transfer> would carry everything. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+        <exclude domain="device_root" />
+        <exclude domain="device_file" />
+        <exclude domain="device_database" />
+        <exclude domain="device_sharedpref" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+        <exclude domain="device_root" />
+        <exclude domain="device_file" />
+        <exclude domain="device_database" />
+        <exclude domain="device_sharedpref" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Files and folders in two columns; the welcome grid keeps the default three,
+         which is why it is not restated here. -->
+    <integer name="home_list_columns">2</integer>
+</resources>

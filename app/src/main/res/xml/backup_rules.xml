@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Android 11 and older half of data_extraction_rules.xml, and the same answer:
+     nothing. On those versions allowBackup="false" already turns every kind of backup
+     off, so these rules only matter if that attribute is ever changed or ignored. As
+     there, every domain is excluded by name, because a file with no rules in it means
+     all of the app's data. -->
+<full-backup-content>
+    <exclude domain="root" />
+    <exclude domain="file" />
+    <exclude domain="database" />
+    <exclude domain="sharedpref" />
+    <exclude domain="external" />
+    <exclude domain="device_root" />
+    <exclude domain="device_file" />
+    <exclude domain="device_database" />
+    <exclude domain="device_sharedpref" />
+</full-backup-content>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One tile of the welcome grid.
+
+     Deliberately the same shape, the same background and the same tinting call as the
+     badge in row_item.xml, because the whole point of the grid is to teach the vocabulary
+     the file list uses one screen later. If the two ever stop matching, this is the wrong
+     file to fix: the colours come from MainActivity.WELCOME_BADGES, which is also what
+     badgeFor returns.
+
+     Not important for accessibility: the GridLayout carries one description for all nine,
+     the same way a file row carries one for its badge, thumbnail, title and subtitle. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="@dimen/welcome_tile_size"
+    android:layout_height="@dimen/welcome_tile_size"
+    android:layout_margin="@dimen/welcome_tile_gap"
+    android:background="@drawable/badge_bg"
+    android:gravity="center"
+    android:importantForAccessibility="no"
+    android:textColor="#FFFFFF"
+    android:textSize="@dimen/welcome_tile_text"
+    android:textStyle="bold" />

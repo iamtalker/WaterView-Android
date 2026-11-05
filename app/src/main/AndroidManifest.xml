@@ -1,10 +1,65 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- No permissions at all: files arrive via SAF or Open-with grants, rendering is fully offline.
+         Media3 contributes ACCESS_NETWORK_STATE for streaming bitrate choice, stripped below because
+         WaterView only ever plays local files. The checkPermissions task fails the build on any others. -->
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
+
+    <!-- Auto Backup is off because the only thing it could copy is worthless. The recents
+         list is SAF content URIs, and Recents.all filters every entry against
+         contentResolver.persistedUriPermissions; those grants are per install and do not
+         survive a restore, so a restored list renders empty however faithfully it was
+         backed up. Leaving it on sent file names and timestamps to the user's Drive to
+         buy nothing, and put an asterisk on the one claim the app is built around.
+         Thumbnails were never affected: cacheDir is excluded from backup already.
+         From Android 12 allowBackup covers cloud backup only, so the transfer to a new
+         phone has rules of its own: see data_extraction_rules.xml, and backup_rules.xml
+         for the same answer on Android 11 and older. -->
     <application
-        android:allowBackup="true"
-        android:label="물뷰"
-        android:theme="@style/Theme.WaterView">
+        android:name=".WaterViewApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.WaterView"
+        tools:targetApi="31">
+
+        <!-- The WebView provider uploads usage and diagnostic metrics for every app that
+             embeds it, package name included, from its own process, which has the network
+             access WaterView does not. Documented opt-out, taken. -->
+        <meta-data
+            android:name="android.webkit.WebView.MetricsOptOut"
+            android:value="true" />
+
+        <!-- Safe Browsing checks URLs a WebView loads against Google's lists, and on a
+             match asks Google about it from outside this app. The only URLs here are
+             WaterView's own pages with the file's name in them, which no list is about. -->
+        <meta-data
+            android:name="android.webkit.WebView.EnableSafeBrowsing"
+            android:value="false" />
+
+        <!-- Lets the Share action hand out the shared-text temp file; grants are
+             per-share and read-only, so the zero-permission story is unchanged -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -14,5 +69,180 @@
             </intent-filter>
         </activity>
         <receiver android:name=".UpdateReceiver" android:exported="false" />
+
+        <!-- Each file another app opens gets a card of its own in the recent apps screen, rather
+             than opening inside that app's card (#46). The card goes when the file is closed,
+             and none survives a reboot, because the sender's read grant doesn't either. -->
+        <activity
+            android:name=".ViewerActivity"
+            android:exported="true"
+            android:documentLaunchMode="always"
+            android:autoRemoveFromRecents="true"
+            android:persistableMode="persistNever"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <!-- content only. A file:// path from another app would be read with WaterView's
+                     access rather than the sender's, and with no storage permission the only
+                     paths WaterView can read are its own private ones. -->
+                <data android:scheme="content" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="text/*" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="application/xml" />
+                <data android:mimeType="application/x-subrip" />
+                <!-- Three kinds of source that Android gives a type outside text/, so that
+                     text/* above does not cover them: a .js, a .rb and a .sql. -->
+                <data android:mimeType="application/javascript" />
+                <data android:mimeType="application/x-ruby" />
+                <data android:mimeType="application/x-sql" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <!-- The Office formats' relatives. A .docm, a .pptm, a .xlsm and a .xlsb twice
+                     over, because a filter matches a type case-sensitively: Android 10 and later
+                     report every type in lower case, while the registered spelling says
+                     macroEnabled and an app passing on the type a file was sent with can use
+                     that. Lint wants lower case only, which Android's documentation asks of
+                     senders too, so it is told to let the registered spelling through, for the
+                     apps that send it anyway. -->
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.template" />
+                <data android:mimeType="application/vnd.ms-word.document.macroEnabled.12" tools:ignore="AppLinkUrlError" />
+                <data android:mimeType="application/vnd.ms-word.document.macroenabled.12" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.template" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.slideshow" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.template" />
+                <data android:mimeType="application/vnd.ms-powerpoint.presentation.macroEnabled.12" tools:ignore="AppLinkUrlError" />
+                <data android:mimeType="application/vnd.ms-powerpoint.presentation.macroenabled.12" />
+                <data android:mimeType="application/vnd.ms-excel" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" tools:ignore="AppLinkUrlError" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.macroenabled.12" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.binary.macroEnabled.12" tools:ignore="AppLinkUrlError" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.binary.macroenabled.12" />
+                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
+                <data android:mimeType="application/vnd.oasis.opendocument.text" />
+                <data android:mimeType="application/vnd.oasis.opendocument.text-template" />
+                <data android:mimeType="application/msword" />
+                <data android:mimeType="application/rtf" />
+                <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+                <!-- An STL, by every type it is sent as. The last is the one Android itself
+                     gives a .stl, and so the one a file manager sends: see FileKind. -->
+                <data android:mimeType="model/stl" />
+                <data android:mimeType="model/x.stl-binary" />
+                <data android:mimeType="model/x.stl-ascii" />
+                <data android:mimeType="application/sla" />
+                <data android:mimeType="application/vnd.ms-pki.stl" />
+                <!-- A file an app knows only as binary. WhatsApp sends one whose type it has
+                     no name for this way, a .stl among them, and shows it as BIN. Android
+                     matches on the type alone, never the file's name, so this is the only way
+                     WaterView is offered one. Once it is here it goes by its name: see FileKind. -->
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="text/*" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="application/xml" />
+                <data android:mimeType="application/x-subrip" />
+                <!-- Three kinds of source that Android gives a type outside text/, so that
+                     text/* above does not cover them: a .js, a .rb and a .sql. -->
+                <data android:mimeType="application/javascript" />
+                <data android:mimeType="application/x-ruby" />
+                <data android:mimeType="application/x-sql" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <!-- As in the VIEW filter above, both spellings of .docm, .pptm, .xlsm and .xlsb. -->
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.template" />
+                <data android:mimeType="application/vnd.ms-word.document.macroEnabled.12" tools:ignore="AppLinkUrlError" />
+                <data android:mimeType="application/vnd.ms-word.document.macroenabled.12" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.template" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.slideshow" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.template" />
+                <data android:mimeType="application/vnd.ms-powerpoint.presentation.macroEnabled.12" tools:ignore="AppLinkUrlError" />
+                <data android:mimeType="application/vnd.ms-powerpoint.presentation.macroenabled.12" />
+                <data android:mimeType="application/vnd.ms-excel" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" tools:ignore="AppLinkUrlError" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.macroenabled.12" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.binary.macroEnabled.12" tools:ignore="AppLinkUrlError" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.binary.macroenabled.12" />
+                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
+                <data android:mimeType="application/vnd.oasis.opendocument.text" />
+                <data android:mimeType="application/vnd.oasis.opendocument.text-template" />
+                <data android:mimeType="application/msword" />
+                <data android:mimeType="application/rtf" />
+                <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+                <data android:mimeType="model/stl" />
+                <data android:mimeType="model/x.stl-binary" />
+                <data android:mimeType="model/x.stl-ascii" />
+                <data android:mimeType="application/sla" />
+                <data android:mimeType="application/vnd.ms-pki.stl" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+        </activity>
+
+        <!-- The viewer again, under the name WaterView's own screens open it by. Not exported, so
+             only WaterView can start it, which is how the viewer tells a file WaterView chose from
+             one another app handed it: see ViewerActivity.INTERNAL_VIEWER for why that
+             matters. A subclass rather than an alias, so a file opened inside WaterView stays in
+             WaterView's card in the recent apps screen. -->
+        <activity
+            android:name=".InternalViewer"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+
+        <!-- Serves a file inside a zip to the viewers, read straight out of the archive, issue
+             #30. Not exported: Share hands one file's URI on with a one-off read grant, the
+             same shape as the FileProvider above, so the zero-permission story is unchanged. -->
+        <provider
+            android:name=".ArchiveProvider"
+            android:authorities="${applicationId}.archive"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <!-- Draws PDFs where pdf.js can't run: see PdfRenderService. An isolated process has a
+             uid of its own with no storage, no network and no way into WaterView's files, so
+             PDFium reading a hostile file reaches only the descriptor it was handed. Not
+             exported, so nothing but WaterView can bind it. -->
+        <service
+            android:name=".PdfRenderService"
+            android:isolatedProcess="true"
+            android:exported="false" />
+
+        <!-- The same renderer three times more, so that up to four viewers each have one of
+             their own, isolated and unexported like it: see RendererSlots. -->
+        <service
+            android:name=".PdfRenderService1"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <service
+            android:name=".PdfRenderService2"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <service
+            android:name=".PdfRenderService3"
+            android:isolatedProcess="true"
+            android:exported="false" />
+
+        <!-- The same renderer again, for PDF thumbnails: see PdfThumbs. A second isolated
+             service runs in a process of its own, so a browsed folder's files are never read
+             beside the document open in the viewer. -->
+        <service
+            android:name=".PdfThumbService"
+            android:isolatedProcess="true"
+            android:exported="false" />
     </application>
 </manifest>

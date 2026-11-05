@@ -12,11 +12,9 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** 첫 배포부터 사용할 업데이트 확인기. 릴리스 저장소가 정해지면 REPOSITORY만 고정하면 된다. */
 object UpdateChecker {
     private const val REPOSITORY = "iamtalker/WaterView-Android"
-
-    data class Release(val version: String, val pageUrl: String, val downloadUrl: String?)
+    data class Release(val version: String, val downloadUrl: String?)
 
     suspend fun latest(): Release? = withContext(Dispatchers.IO) {
         runCatching {
@@ -24,38 +22,13 @@ object UpdateChecker {
             connection.connectTimeout = 10_000
             connection.readTimeout = 15_000
             connection.setRequestProperty("Accept", "application/vnd.github+json")
-            connection.inputStream.bufferedReader().use { json ->
-                val body = json.readText()
+            connection.inputStream.bufferedReader().use { reader ->
+                val body = reader.readText()
                 val tag = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)").find(body)?.groupValues?.get(1)
-                val page = Regex("\"html_url\"\\s*:\\s*\"([^\"]+)").find(body)?.groupValues?.get(1)
                 val apk = Regex("\"browser_download_url\"\\s*:\\s*\"([^\"]+\\.apk)\"").find(body)?.groupValues?.get(1)
-                if (tag != null && page != null) Release(tag.removePrefix("v"), page, apk) else null
+                if (tag == null) null else Release(tag.removePrefix("v"), apk)
             }
         }.getOrNull()
-    }
-
-    suspend fun downloadAndInstall(context: Context, release: Release) = withContext(Dispatchers.IO) {
-        val url = release.downloadUrl ?: error("릴리즈 APK를 찾지 못했습니다.")
-        val temp = File(context.cacheDir, "waterview-update.apk.part")
-        val apk = File(context.cacheDir, "waterview-update.apk")
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 15_000
-        connection.readTimeout = 60_000
-        connection.inputStream.use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
-        if (!temp.renameTo(apk)) error("업데이트 파일을 저장하지 못했습니다.")
-        install(context, apk)
-    }
-
-    private fun install(context: Context, apk: File) {
-        val installer = context.packageManager.packageInstaller
-        val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-        val sessionId = installer.createSession(params)
-        installer.openSession(sessionId).use { session ->
-            apk.inputStream().use { input -> session.openWrite("update.apk", 0, apk.length()).use { output -> input.copyTo(output); session.fsync(output) } }
-            val intent = Intent(context, UpdateReceiver::class.java).setPackage(context.packageName)
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
-            session.commit(PendingIntent.getBroadcast(context, sessionId, intent, flags).intentSender)
-        }
     }
 
     fun isNewer(latest: String, current: String): Boolean {
@@ -64,6 +37,26 @@ object UpdateChecker {
         return (0 until maxOf(a.size, b.size)).firstNotNullOfOrNull { i ->
             (a.getOrElse(i) { 0 } - b.getOrElse(i) { 0 }).takeIf { it != 0 }
         }?.let { it > 0 } ?: false
+    }
+
+    suspend fun downloadAndInstall(context: Context, release: Release) = withContext(Dispatchers.IO) {
+        val url = release.downloadUrl ?: error("릴리즈 APK를 찾지 못했습니다.")
+        val part = File(context.cacheDir, "waterview-update.apk.part")
+        val apk = File(context.cacheDir, "waterview-update.apk")
+        val connection = URL(url).openConnection() as HttpURLConnection
+        connection.connectTimeout = 15_000
+        connection.readTimeout = 60_000
+        connection.inputStream.use { input -> part.outputStream().use { output -> input.copyTo(output) } }
+        if (!part.renameTo(apk)) error("업데이트 파일을 저장하지 못했습니다.")
+
+        val installer = context.packageManager.packageInstaller
+        val sessionId = installer.createSession(PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL))
+        installer.openSession(sessionId).use { session ->
+            apk.inputStream().use { input -> session.openWrite("update.apk", 0, apk.length()).use { output -> input.copyTo(output); session.fsync(output) } }
+            val intent = Intent(context, UpdateReceiver::class.java).setPackage(context.packageName)
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
+            session.commit(PendingIntent.getBroadcast(context, sessionId, intent, flags).intentSender)
+        }
     }
 }
 

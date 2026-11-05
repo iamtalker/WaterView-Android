@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Light icons, because the night surface is nearly black.
+
+     This is a resource rather than an item in a values-night theme because a style
+     redeclared under values-night replaces the day one outright instead of merging
+     with it: a night Theme.WaterView existing only to flip this flag would silently drop
+     all thirty-five colour role mappings and put the baseline purple back. One theme,
+     one qualified boolean.
+-->
+<resources>
+    <bool name="gander_light_status_bar">false</bool>
+</resources>

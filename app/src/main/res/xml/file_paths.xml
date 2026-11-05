@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the cache's shared folder, which holds the files of WaterView's own the viewer can share:
+     text another app shared, and About's pages. The rest of the cache, its thumbnails among it, is
+     out of reach. Every other file is shared as the content:// URI it came as. -->
+<paths>
+    <cache-path
+        name="shared"
+        path="shared/" />
+</paths>
