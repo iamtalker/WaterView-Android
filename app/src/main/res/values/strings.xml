@@ -150,16 +150,16 @@
     <string name="about_permissions_none">None</string>
     <!-- Sits under the permission line, which WaterView reads back from Android at
          runtime rather than asserting for itself -->
-    <string name="about_permissions_detail">Asked of Android just now, not written here in advance. WaterView has no internet permission either, so it cannot send your files anywhere.</string>
+    <string name="about_permissions_detail">WaterView only uses internet access to check and download updates. Your opened files stay on your device.</string>
     <string name="about_file_types">File types</string>
     <string name="about_file_types_detail">Every format WaterView opens, by kind</string>
-    <string name="about_made_by">Made by Arjun Maniyani</string>
+    <string name="about_made_by">Built on Gander by Arjun Maniyani</string>
     <string name="about_made_by_url" translatable="false">arjun.maniyani.com</string>
     <string name="about_source">Source code</string>
-    <string name="about_source_url" translatable="false">github.com/mokshablr/gander</string>
+    <string name="about_source_url" translatable="false">github.com/iamtalker/WaterView-Android</string>
     <string name="about_licences">Open source licences</string>
     <string name="about_licences_detail">Full text for every bundled library</string>
-    <string name="about_copyright" translatable="false">MIT licence. Copyright © 2026 Arjun Maniyani.</string>
+    <string name="about_copyright" translatable="false">WaterView changes and Gander are released under the MIT licence.</string>
     <string name="about_close">Close</string>
     <string name="no_browser">No app can open links</string>
     <!-- Each becomes the viewer's title, so it reads as the document it is -->
@@ -192,8 +192,8 @@
     <string name="print_locked">This PDF has a password, so Android can\'t print it</string>
     <string name="print_failed">This file can\'t be printed</string>
     <string name="url_author" translatable="false">https://arjun.maniyani.com/</string>
-    <string name="url_source" translatable="false">https://github.com/mokshablr/gander</string>
-    <string name="url_site" translatable="false">https://arjun.maniyani.com/gander/</string>
+    <string name="url_source" translatable="false">https://github.com/iamtalker/WaterView-Android</string>
+    <string name="url_site" translatable="false">https://github.com/iamtalker/WaterView-Android</string>
     <!-- Only reached when the Play Store app will not open the listing itself -->
     <string name="url_play_listing" translatable="false">https://play.google.com/store/apps/details?id=%1$s</string>
     <!-- Folder sort and filter -->
