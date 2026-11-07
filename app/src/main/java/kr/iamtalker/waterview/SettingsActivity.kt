@@ -16,6 +16,24 @@ class SettingsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_settings)
         findViewById<MaterialToolbar>(R.id.settingsToolbar).setNavigationOnClickListener { finish() }
 
+        val turnRow = findViewById<View>(R.id.turnRow)
+        val turnValue = findViewById<TextView>(R.id.turnValue)
+        fun refreshTurn() {
+            turnValue.setText(if (Settings.turnBySlide(this)) R.string.turn_slide else R.string.turn_tap)
+        }
+        turnRow.setOnClickListener {
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.turn_title)
+                .setSingleChoiceItems(R.array.turn_choices, if (Settings.turnBySlide(this)) 0 else 1) { dialog, which ->
+                    Settings.setTurnBySlide(this, which == 0)
+                    refreshTurn()
+                    dialog.dismiss()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+        refreshTurn()
+
         val groundRow = findViewById<View>(R.id.groundRow)
         val groundValue = findViewById<TextView>(R.id.groundValue)
         val groundNames = resources.getStringArray(R.array.ground_choices)

@@ -63,6 +63,8 @@ internal class PhotoPager(
 
     val view = ViewPager2(context).apply {
         setBackgroundColor(Color.BLACK)
+        // The reader's choice in settings, the same for every viewer: a slide swipes, a tap does not
+        isUserInputEnabled = Settings.turnBySlide(context)
         layoutDirection = if (rightToLeft) android.view.View.LAYOUT_DIRECTION_RTL
         else android.view.View.LAYOUT_DIRECTION_LTR
         // The photos either side are drawn before they are reached, so one slides in whole

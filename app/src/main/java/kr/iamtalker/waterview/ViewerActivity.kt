@@ -94,6 +94,16 @@ open class ViewerActivity : AppCompatActivity() {
         private const val STATE_TRASHING = "trashing"
         private const val STATE_TURNS = "turns"
 
+        /** The share of a screen's width at each side that a tap turns the page, when taps turn pages. */
+        const val EDGE_FRACTION = 0.22f
+
+        /** The middle of the screen, where a tap shows or hides the controls: the middle 56% each way. */
+        const val CENTRE_LOW = 0.22f
+        const val CENTRE_HIGH = 0.78f
+
+        /** How fast a swipe must go, in px a second, to turn the page as a slide. */
+        const val SLIDE_MIN_VELOCITY = 500f
+
         /**
          * Opens a PDF in the simple view whatever the WebView, so that a phone pdf.js runs on can
          * show it. Read only by a debuggable build: see [pdfRouteHere].
@@ -1853,8 +1863,16 @@ open class ViewerActivity : AppCompatActivity() {
         setMinimumScaleType(SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE)
         maxScale = 12f
         setBackgroundColor(Settings.groundColor(this@ViewerActivity))
-        // A light tap on a picture brings the controls up or takes them away
-        setOnClickListener { toggleReaderControls() }
+        // A tap on a page: in the middle it shows or hides the controls, and on an edge it turns the
+        // page when the reader chose taps rather than slides. The x of the tap is kept from the touch.
+        setOnTouchListener { _, e ->
+            if (e.actionMasked == MotionEvent.ACTION_UP) {
+                lastPhotoTapX = e.x
+                lastPhotoTapY = e.y
+            }
+            false
+        }
+        setOnClickListener { tapAt(lastPhotoTapX, lastPhotoTapY, width, height) }
         // The library's own double tap went to a picture pixel a dp, nine times a phone's photo
         // and a small picture not at all, so it goes to twice the fit as a page's does
         setDoubleTapZoomDuration(DOUBLE_TAP_MS)
@@ -1869,9 +1887,6 @@ open class ViewerActivity : AppCompatActivity() {
 
             override fun onImageLoadError(e: Exception) = failed()
         })
-        // A tap hides the title bar and the phone's bars, and the next brings them back. The view
-        // takes a tap as a click only once no second tap has followed to make a double tap.
-        setOnClickListener { toggleReaderControls() }
         ViewCompat.setAccessibilityDelegate(this, TapForTheEye)
     }
 
@@ -1885,7 +1900,11 @@ open class ViewerActivity : AppCompatActivity() {
             this, nightChrome, ::touchExplorationOn, ::applySystemBarInsets,
             // A folder's photo count keeps clear of the phone's bars at the bottom, which the
             // picture now runs under
-            keepClearOf = { clear, _ -> placeReadout(readoutLift + clear.bottom) },
+            keepClearOf = { clear, _ ->
+                placeReadout(readoutLift + clear.bottom)
+                // The page's buttons sit above the phone's own bar over a picture, which runs under it
+                findViewById<View>(R.id.readerBottomBar).setPadding(0, 0, 0, clear.bottom)
+            },
         ).apply { float() }
     }
 
@@ -1908,6 +1927,27 @@ open class ViewerActivity : AppCompatActivity() {
     private fun stillOnScreen(): Pair<Uri, StillPhotoView>? {
         val pager = photoPager ?: return lonePhoto
         return pager.stillShown?.let { pager.shown to it }
+    }
+
+    /** Where the last touch on a photo came up, for a tap to say where on the screen it was. */
+    private var lastPhotoTapX = 0f
+    private var lastPhotoTapY = 0f
+
+    /**
+     * One rule for every viewer. In the middle of the screen a tap shows or hides the controls, and
+     * only there: a tap at the top or bottom does nothing. On the left and right edges a tap turns the
+     * page when the reader chose taps; a slide does the turning otherwise.
+     */
+    private fun tapAt(x: Float, y: Float, width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        val fx = x / width
+        val fy = y / height
+        val inMiddle = fy in CENTRE_LOW..CENTRE_HIGH && fx in CENTRE_LOW..CENTRE_HIGH
+        when {
+            fx < EDGE_FRACTION && !Settings.turnBySlide(this) -> turnPage(forward = false)
+            fx > 1f - EDGE_FRACTION && !Settings.turnBySlide(this) -> turnPage(forward = true)
+            inMiddle -> toggleReaderControls()
+        }
     }
 
     /** Rotation is not offered: a photo shows the way the file holds it. */
@@ -2185,41 +2225,28 @@ open class ViewerActivity : AppCompatActivity() {
         val pictureTaps = if (kind == FileKind.IMAGE_WEB) {
             GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
                 override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                    toggleReaderControls()
+                    if (!touchExplorationOn()) tapAt(e.x, e.y, web.width, web.height)
                     return false
                 }
             })
         } else {
             null
         }
+        // How a page turns, the same in every viewer: a slide (a sideways swipe) or a tap on the edge.
+        // A tap in the middle always shows or hides the controls.
         val pageTaps = if (kind in setOf(FileKind.TEXT, FileKind.MD, FileKind.PDF, FileKind.PDF_SIMPLE)) {
             GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
                 override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
-                    if (kind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE) && Settings.pdfHorizontalPages(this@ViewerActivity) &&
-                        e1 != null && kotlin.math.abs(e2.x - e1.x) > kotlin.math.abs(e2.y - e1.y)
+                    if (Settings.turnBySlide(this@ViewerActivity) && e1 != null &&
+                        kotlin.math.abs(e2.x - e1.x) > kotlin.math.abs(e2.y - e1.y) &&
+                        kotlin.math.abs(velocityX) > SLIDE_MIN_VELOCITY
                     ) turnPage(forward = velocityX < 0)
                     return false
                 }
 
                 override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                     if (touchExplorationOn()) return false
-                    if (kind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE)) {
-                        val edge = web.width * 0.22f
-                        when {
-                            e.x < edge -> turnPage(forward = false)
-                            e.x > web.width - edge -> turnPage(forward = true)
-                            else -> toggleReaderControls()
-                        }
-                        return false
-                    }
-                    // A text file: a light tap in the middle brings the controls up or takes them
-                    // away, and the sides turn the page as before
-                    val edge = web.width * 0.22f
-                    when {
-                        e.x < edge -> turnPage(forward = false)
-                        e.x > web.width - edge -> turnPage(forward = true)
-                        else -> toggleReaderControls()
-                    }
+                    tapAt(e.x, e.y, web.width, web.height)
                     return false
                 }
             })
