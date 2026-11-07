@@ -575,7 +575,7 @@ var vwEpub = (function () {
       var file = readFrom(refs[r].getAttribute("idref"));
       if (!file || !entry(file) || index[file] !== undefined) continue;
       if (locked[file]) {
-        throw problem("This book is locked",
+        throw problem("이 책은 잠겨 있습니다",
           "It is protected against copying (DRM), so only the app of the shop or library " +
           "it came from can open it.");
       }
@@ -589,7 +589,7 @@ var vwEpub = (function () {
       spine.push({ path: file, kind: kind, pages: pages, start: total, fixed: fixed, wait: null, ready: null });
       total += pages;
     }
-    if (!spine.length) throw new Error("The book lists no chapters.");
+    if (!spine.length) throw new Error("이 책에는 장이 없습니다.");
 
     // The identifier the package calls its own, or failing that its first
     var own = doc.documentElement.getAttribute("unique-identifier");
@@ -748,14 +748,14 @@ var vwEpub = (function () {
     }, function () {
       throw new Error("not a book");
     }).catch(function () {
-      throw problem("Could not open this book", "It is not an EPUB, or the file is damaged.");
+      throw problem("이 책을 열 수 없습니다", "EPUB 파일이 아니거나 손상되었습니다.");
     }).then(function () {
       return text("META-INF/container.xml");
     }).then(function (source) {
       var roots = all(xml(source), "rootfile");
       var path = null;
       for (var i = 0; i < roots.length && !path; i++) path = roots[i].getAttribute("full-path");
-      if (!path || !entry(path)) throw new Error("The book does not say where its chapters are listed.");
+      if (!path || !entry(path)) throw new Error("책이 장 목록의 위치를 알려 주지 않습니다.");
       return text(path).then(function (pkg) { return readPackage(xml(pkg), path); });
     }).then(readContents);
   }
@@ -959,7 +959,7 @@ var vwEpub = (function () {
     if (ch.wait) return ch.wait;
     var read = ch.kind === "picture" ? Promise.resolve(pictured(ch.path))
       // A file that is neither a page nor a picture has nothing in it to read as one
-      : ch.kind === "other" ? Promise.reject(new Error("Not a page."))
+      : ch.kind === "other" ? Promise.reject(new Error("페이지가 아닙니다."))
         : text(ch.path);
     ch.wait = read.then(function (source) {
       return chapter(source, ch.path, ch.fixed);
@@ -967,7 +967,7 @@ var vwEpub = (function () {
       // One chapter that cannot be read leaves the rest of the book readable
       var holder = document.createElement("body");
       var said = document.createElement("p");
-      said.textContent = "This part of the book could not be read.";
+      said.textContent = "책의 이 부분을 읽을 수 없습니다.";
       holder.appendChild(said);
       return { body: holder, html: {}, own: {}, styles: [], drawn: null };
     }).then(function (made) {
@@ -2067,7 +2067,7 @@ var vwEpub = (function () {
   function showLink(address) {
     if (address) {
       linkAddress.textContent = address;
-      linkCopy.textContent = "Copy address";
+      linkCopy.textContent = "주소 복사";
       linkBox.hidden = false;
       linkCopy.focus({ preventScroll: true });
     } else {
@@ -2091,7 +2091,7 @@ var vwEpub = (function () {
     chosen.addRange(range);
     function done() {
       chosen.removeAllRanges();
-      linkCopy.textContent = "Copied";
+      linkCopy.textContent = "복사됨";
     }
     var did = false;
     try { did = document.execCommand("copy"); } catch (e) { /* the newer way, then */ }
@@ -2292,7 +2292,7 @@ var vwEpub = (function () {
   });
 
   function fail(e) {
-    vwError((e && e.vwTitle) || "Could not open this book", String((e && e.message) || e));
+    vwError((e && e.vwTitle) || "이 책을 열 수 없습니다", String((e && e.message) || e));
   }
 
   vwFetchDoc("buffer").then(open).then(function () {

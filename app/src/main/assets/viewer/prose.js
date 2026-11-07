@@ -52,5 +52,5 @@ vwFetchDoc("buffer")
     vwStatusDone();
   })
   .catch(function (e) {
-    vwError("Could not open this document", String(e && e.message || e));
+    vwError("이 문서를 열 수 없습니다", String(e && e.message || e));
   });

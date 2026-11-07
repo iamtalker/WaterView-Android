@@ -4,6 +4,6 @@ var img = document.getElementById("img");
 img.alt = vwName;
 if (vwExt === "svg") img.className = "svg";
 img.onerror = function () {
-  vwError("Could not display this image", vwName);
+  vwError("이 그림을 표시할 수 없습니다", vwName);
 };
 img.src = "/doc/file" + (vwExt ? "." + vwExt : "");

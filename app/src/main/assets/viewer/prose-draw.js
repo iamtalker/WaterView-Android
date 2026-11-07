@@ -514,7 +514,7 @@ function vwProsePicture(prose, bytes, width, height, alt) {
   if (!type) {
     var box = document.createElement("span");
     box.className = "vw-nopicture";
-    box.textContent = "A picture in a format that cannot be shown here";
+    box.textContent = "여기서 보여 줄 수 없는 형식의 그림";
     if (width > 24) box.style.width = vwProsePt(width);
     return box;
   }

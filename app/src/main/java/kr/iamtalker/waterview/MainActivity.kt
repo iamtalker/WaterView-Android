@@ -1,12 +1,10 @@
 package kr.iamtalker.waterview
 
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -157,17 +155,10 @@ class MainActivity : AppCompatActivity() {
         // every folder change, but never touches the menu, so inflating once here
         // survives all of it.
         toolbar.inflateMenu(R.menu.main_menu)
-        // Set once, like the inflate: the installer cannot change while this process
-        // lives, because any reinstall or update kills the process first. The item reads
-        // Switch to Google Play unless Play installed this copy, so only Play's own copy
-        // is asked to rate.
-        if (installedFromPlay()) toolbar.menu.findItem(R.id.action_play).setTitle(R.string.rate_app)
         toolbar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.action_sort -> { showSortDialog(); true }
                 R.id.action_filter -> { showFilterDialog(); true }
-                R.id.action_play -> { openPlayListing(); true }
-                R.id.action_share_app -> { shareWaterView(); true }
                 R.id.action_settings -> { startActivity(Intent(this, SettingsActivity::class.java)); true }
                 R.id.action_update -> { checkForUpdates(); true }
                 R.id.action_about -> { showAbout(); true }
@@ -217,22 +208,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkForUpdates() {
-        Toast.makeText(this, "업데이트를 확인하는 중…", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, R.string.update_checking, Toast.LENGTH_SHORT).show()
         lifecycleScope.launch {
             val release = UpdateChecker.latest()
             if (release == null || !UpdateChecker.isNewer(release.version, BuildConfig.VERSION_NAME)) {
-                Toast.makeText(this@MainActivity, "최신 버전입니다.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, R.string.update_latest, Toast.LENGTH_SHORT).show()
                 return@launch
             }
             MaterialAlertDialogBuilder(this@MainActivity)
-                .setTitle("새 버전 ${release.version}")
-                .setMessage("최신 APK를 앱 안에서 내려받아 설치합니다.")
-                .setNegativeButton("취소", null)
-                .setPositiveButton("업데이트") { _, _ ->
+                .setTitle(getString(R.string.update_new_version, release.version))
+                .setMessage(R.string.update_install_hint)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.update_confirm) { _, _ ->
                     lifecycleScope.launch {
                         runCatching { UpdateChecker.downloadAndInstall(this@MainActivity, release) }
-                            .onSuccess { Toast.makeText(this@MainActivity, "설치 확인 화면을 엽니다.", Toast.LENGTH_LONG).show() }
-                            .onFailure { Toast.makeText(this@MainActivity, "업데이트 실패: ${it.message}", Toast.LENGTH_LONG).show() }
+                            .onSuccess { Toast.makeText(this@MainActivity, R.string.update_opening, Toast.LENGTH_LONG).show() }
+                            .onFailure { Toast.makeText(this@MainActivity, getString(R.string.update_failed, it.message), Toast.LENGTH_LONG).show() }
                     }
                 }
                 .show()
@@ -433,48 +424,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Whether Google Play is this install's installer of record, the only case where Rate
-     * can go anywhere: Play takes ratings from nobody else, so a copy from GitHub or
-     * F-Droid is offered Switch to Google Play in that place instead. Asking about our own
-     * package needs no permission and no <queries> entry.
-     */
-    private fun installedFromPlay(): Boolean = runCatching {
-        val installer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            packageManager.getInstallSourceInfo(packageName).installingPackageName
-        } else {
-            @Suppress("DEPRECATION")
-            packageManager.getInstallerPackageName(packageName)
-        }
-        installer == PLAY_STORE
-    }.getOrDefault(false)
-
-    /**
-     * WaterView's listing, sent to the Play Store app by name so another store that also
-     * answers market:// links cannot catch it, and to the browser if Play will not take it.
-     */
-    private fun openPlayListing() {
-        val market = Intent(Intent.ACTION_VIEW, "market://details?id=$packageName".toUri())
-            .setPackage(PLAY_STORE)
-        runCatching { startActivity(market) }
-            .onFailure { openUrl(getString(R.string.url_play_listing, packageName)) }
-    }
-
-    /**
-     * A line and a link through the system share sheet, as the viewer shares a file.
-     * WaterView leaves itself out of the sheet: it accepts shared text, and opening its own
-     * link as a document helps nobody.
-     */
-    private fun shareWaterView() {
-        val send = Intent(Intent.ACTION_SEND)
-            .setType("text/plain")
-            .putExtra(Intent.EXTRA_SUBJECT, getString(R.string.app_name))
-            .putExtra(Intent.EXTRA_TEXT, getString(R.string.share_app_text, getString(R.string.url_site)))
-        val chooser = Intent.createChooser(send, getString(R.string.share_app))
-            .putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, arrayOf(ComponentName(this, ViewerActivity::class.java)))
-        runCatching { startActivity(chooser) }
-    }
-
-    /**
      * Redraws the screen for wherever the reader is now.
      *
      * The toolbar changes at once and the list follows, because the title is known here
@@ -499,8 +448,6 @@ class MainActivity : AppCompatActivity() {
         val inFolder = here != null
         toolbar.menu.findItem(R.id.action_sort)?.isVisible = inFolder
         toolbar.menu.findItem(R.id.action_filter)?.isVisible = inFolder
-        toolbar.menu.findItem(R.id.action_play)?.isVisible = !inFolder
-        toolbar.menu.findItem(R.id.action_share_app)?.isVisible = !inFolder
         toolbar.menu.findItem(R.id.action_about)?.isVisible = !inFolder
 
         val filterSummary = if (inFolder && activeFilters.isNotEmpty()) {
@@ -738,6 +685,8 @@ class MainActivity : AppCompatActivity() {
                 render()
             })
         }
+        // What the viewer may move to from any file of this folder, in the order it is listed
+        val siblings = filteredFiles.map { DocumentsContract.buildDocumentUriUsingTree(crumb.treeUri, it.docId) }
         filteredFiles.forEach { f ->
             val (badge, color) = badgeFor(f.name, f.mime)
             val ext = f.name.substringAfterLast('.', "").lowercase()
@@ -749,7 +698,7 @@ class MainActivity : AppCompatActivity() {
             ).joinToString(" · ").ifEmpty { null }
             rows += Row.Item(
                 badge, color, f.name, subtitle,
-                onClick = { openInViewer(fileUri) },
+                onClick = { FolderFiles.uris = siblings; openInViewer(fileUri) },
                 thumbUri = fileUri.takeIf {
                     Thumbs.supported(FileKind.detect(ext, f.mime), ext)
                 },
@@ -886,9 +835,6 @@ class MainActivity : AppCompatActivity() {
 
         /** Every extension WaterView opens, by kind. FileKindTest holds it to the extension table. */
         const val FILE_TYPES_ASSET = "file_types.md"
-
-        /** Google Play's package: the installer Rate depends on, and the app it opens. */
-        const val PLAY_STORE = "com.android.vending"
 
         /** How long a folder may take to read before the screen says anything about it. */
         const val RENDER_PROGRESS_DELAY_MS = 150L

@@ -531,7 +531,7 @@ var MISSING = {
   chart: "A chart that cannot be shown here",
   table: "A table that cannot be shown here",
   diagram: "A diagram that cannot be shown here",
-  object: "An object that cannot be shown here",
+  object: "여기서 보여 줄 수 없는 개체",
   picture: "A picture that cannot be shown here",
   format: "A picture in a format that cannot be shown here",
   shape: "A shape that cannot be shown here"
@@ -597,7 +597,7 @@ try {
     mediaProcess: true
   });
 } catch (e) {
-  vwError("Could not render this presentation", String(e));
+  vwError("이 프레젠테이션을 표시할 수 없습니다", String(e));
 }
 var vwChecks = 0;
 var vwPoll = setInterval(function () {
@@ -612,7 +612,7 @@ var vwPoll = setInterval(function () {
   } else if (vwChecks > 40) {
     clearInterval(vwPoll);
     vwError(
-      "Could not render this presentation",
+      "이 프레젠테이션을 표시할 수 없습니다",
       "This .pptx may use features the built-in renderer does not understand yet."
     );
   }

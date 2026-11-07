@@ -1010,7 +1010,7 @@ function vwReadRtf(buffer, container) {
     if (b === 0x7B) {                       // {
       rtfFlushBytes(state);
       state.skip = 0;
-      if (stack.length > 2000) throw new Error("This document is nested too deeply to read.");
+      if (stack.length > 2000) throw new Error("이 문서는 너무 깊게 중첩되어 읽을 수 없습니다.");
       stack.push(g);
       var twin = g.unicodeTwin;
       g.unicodeTwin = false;

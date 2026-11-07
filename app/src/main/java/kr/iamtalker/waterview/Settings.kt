@@ -23,6 +23,7 @@ object Settings {
     private const val KEY_SPLIT_WIDE_PAGES = "split_wide_pages"
     private const val KEY_PDF_HORIZONTAL = "pdf_horizontal_pages"
     private const val KEY_PDF_SPLIT_WIDE = "pdf_split_wide_pages"
+    private const val KEY_TEXT_REFLOW = "text_reflow"
 
     fun mangaRightToLeft(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_MANGA_RTL, false)
@@ -43,6 +44,17 @@ object Settings {
 
     fun setPdfHorizontalPages(context: Context, value: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_PDF_HORIZONTAL, value) }
+    }
+
+    /**
+     * Whether a text file's line breaks are joined into its paragraphs, for text that was broken
+     * into short lines by hand or by a converter. Blank lines are kept as paragraph breaks.
+     */
+    fun textReflow(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_TEXT_REFLOW, false)
+
+    fun setTextReflow(context: Context, value: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_TEXT_REFLOW, value) }
     }
 
     fun pdfSplitWidePages(context: Context): Boolean =

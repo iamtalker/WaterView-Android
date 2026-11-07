@@ -45,6 +45,7 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -481,6 +482,36 @@ open class ViewerActivity : AppCompatActivity() {
         mime: String?
     ) {
         setUpNightMode(toolbar, kind)
+        // A text file's bookmarks: added where the screen is, and listed to go back to
+        val isText = kind == FileKind.TEXT
+        toolbar.menu.findItem(R.id.action_bookmark_add).apply {
+            isVisible = isText
+            setOnMenuItemClickListener { addBookmark(); true }
+        }
+        toolbar.menu.findItem(R.id.action_bookmarks).apply {
+            isVisible = isText
+            setOnMenuItemClickListener { showBookmarks(); true }
+        }
+        toolbar.menu.findItem(R.id.action_text_reflow).apply {
+            isVisible = isText
+            isChecked = Settings.textReflow(this@ViewerActivity)
+            setOnMenuItemClickListener {
+                Settings.setTextReflow(this@ViewerActivity, !Settings.textReflow(this@ViewerActivity))
+                recreate()
+                true
+            }
+        }
+        // The files either side of this one, where it was opened from a folder that is known
+        val folder = FolderFiles.uris
+        val index = folder.indexOfFirst { it.toString() == uri.toString() }
+        toolbar.menu.findItem(R.id.action_previous_file).apply {
+            isVisible = index > 0
+            setOnMenuItemClickListener { openFolderFile(index - 1); true }
+        }
+        toolbar.menu.findItem(R.id.action_next_file).apply {
+            isVisible = index >= 0 && index < folder.size - 1
+            setOnMenuItemClickListener { openFolderFile(index + 1); true }
+        }
         goToPageItem = toolbar.menu.findItem(R.id.action_go_to_page).apply {
             setOnMenuItemClickListener { askForPage(); true }
         }
@@ -819,6 +850,12 @@ open class ViewerActivity : AppCompatActivity() {
 
     /** Where in a book the top of the screen is; see [Positions.Place]. Null until its page says. */
     private var bookPlace: Positions.Place? = null
+
+    /** Where the top of a text file's screen is, in characters from its start. Null until its page says. */
+    private var textTop: Long? = null
+
+    /** The words at [textTop], which a bookmark put there is named by. */
+    private var textSnippet = ""
 
     /** Whether the chapter on screen takes the reader's text size. See [applyTextSize]. */
     private var bookReflows = true
@@ -1657,6 +1694,11 @@ open class ViewerActivity : AppCompatActivity() {
                         PortMessage.SimpleView -> if (kind == FileKind.PDF && cardOffersSimple) askForSimpleView()
                         // Only a PDF shrinks its pages, and zooms its own double tap while they are
                         is PortMessage.Shrunk -> if (kind == FileKind.PDF) doubleTapZoom?.leftToPage = said.on
+                        // A text file's top of screen, for a bookmark and for where it reopens
+                        is PortMessage.Offset -> if (kind == FileKind.TEXT) {
+                            textTop = said.at
+                            textSnippet = said.snippet
+                        }
                         // Anything else came from the document rather than from
                         // the renderer, and is dropped without a word.
                         null -> Unit
@@ -2195,7 +2237,7 @@ open class ViewerActivity : AppCompatActivity() {
         // of what the password was keeping. A PDF's two views file it under the same
         // fingerprint, so the page left in one is the page the other opens at.
         val keepsPosition =
-            (kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE || kind == FileKind.EPUB) &&
+            (kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE || kind == FileKind.EPUB || kind == FileKind.TEXT) &&
                 !ArchiveProvider.isEntry(this, uri)
         positionKey = null
 
@@ -2204,7 +2246,7 @@ open class ViewerActivity : AppCompatActivity() {
         // before handing it over, as a cloud one does, answers when it has it, and asked on
         // the main thread that held the whole viewer still for the length of a download. The
         // page waits for the answers, since it would be waiting on the same provider anyway.
-        offMain({ (total, key, placeAt, resumeAt): Opening ->
+        offMain({ (total, key, placeAt, resumeAt, markAt): Opening ->
             if (webView !== web) return@offMain
             server.total = total
             positionKey = key
@@ -2227,6 +2269,8 @@ open class ViewerActivity : AppCompatActivity() {
                     "&night=$night" +
                     (if (resumeAt > 1) "&resume=$resumeAt" else "") +
                     (placeAt?.let { "&at=${it.chapter}.${it.past}" } ?: "") +
+                    (markAt?.let { "&mark=$it" } ?: "") +
+                    (if (kind == FileKind.TEXT && Settings.textReflow(this)) "&reflow=1" else "") +
                     // The zoom the phone itself asks for, which a book's page keeps its
                     // own words at whatever size the reader gives the book's, and a sheet
                     // opens zoomed to
@@ -2239,17 +2283,26 @@ open class ViewerActivity : AppCompatActivity() {
         }) { app ->
             val total = documentLength(app, uri)
             val key = if (keepsPosition) Positions.keyFor(app.contentResolver, uri, total) else null
-            // A book reopens at its place, which is finer than the page it also files
+            // A book reopens at its place, which is finer than the page it also files; a text
+            // file at its character, which is kept in Marks rather than as a page
             Opening(
                 total, key,
                 placeAt = if (kind == FileKind.EPUB) key?.let { Positions.place(app, it) } else null,
-                resumeAt = if (kind == FileKind.EPUB) 0 else key?.let { Positions.page(app, it) } ?: 0,
+                resumeAt = if (kind == FileKind.EPUB || kind == FileKind.TEXT) 0
+                    else key?.let { Positions.page(app, it) } ?: 0,
+                markAt = if (kind == FileKind.TEXT) key?.let { Marks.leftAt(app, it) } else null,
             )
         }
     }
 
     /** What a document's page is told before it loads that has to be asked of its provider: see [showWeb]. */
-    private data class Opening(val total: Long, val key: String?, val placeAt: Positions.Place?, val resumeAt: Int)
+    private data class Opening(
+        val total: Long,
+        val key: String?,
+        val placeAt: Positions.Place?,
+        val resumeAt: Int,
+        val markAt: Long? = null,
+    )
 
     /**
      * Takes the WebView away, which can no longer show its document, and puts the card saying so
@@ -2291,6 +2344,8 @@ open class ViewerActivity : AppCompatActivity() {
         savePosition()
         pageAt = 0
         pageTotal = 0
+        textTop = null
+        textSnippet = ""
         goToPageItem?.isVisible = false
         pageFader.hideNow()
         fastScrollEnabled = false
@@ -2438,8 +2493,73 @@ open class ViewerActivity : AppCompatActivity() {
      * Nothing until the page has reported, so a document closed before it finished
      * opening keeps the page it had from last time.
      */
+    /** Opens the file at [index] of the folder this one came from, in place of this one. */
+    private fun openFolderFile(index: Int) {
+        val target = FolderFiles.uris.getOrNull(index) ?: return
+        savePosition()
+        startActivity(
+            Intent()
+                .setClassName(this, ViewerActivity.INTERNAL_VIEWER)
+                .setData(target)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        )
+        finish()
+    }
+
+    /** Puts a bookmark where the top of a text file's screen is. */
+    private fun addBookmark() {
+        val key = positionKey ?: return
+        val at = textTop ?: return
+        if (Marks.bookmarks(this, key).any { it.at == at }) {
+            Toast.makeText(this, R.string.bookmark_exists, Toast.LENGTH_SHORT).show()
+            return
+        }
+        Marks.add(this, key, at, textSnippet)
+        Toast.makeText(this, R.string.bookmark_added, Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * The bookmarks of a text file, to go to one of them. Its neutral button takes one away
+     * instead, since a bookmark that cannot be removed is one more to pick past.
+     */
+    private fun showBookmarks() {
+        val key = positionKey ?: return
+        val marks = Marks.bookmarks(this, key)
+        if (marks.isEmpty()) {
+            Toast.makeText(this, R.string.no_bookmarks, Toast.LENGTH_SHORT).show()
+            return
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.bookmarks)
+            .setItems(bookmarkLabels(marks)) { _, which -> tellPage(PortCommand.goToOffset(marks[which].at)) }
+            .setNeutralButton(R.string.bookmark_remove) { _, _ -> removeBookmark(key) }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** The names of bookmarks in the list: their numbers, and the words at each where they were put. */
+    private fun bookmarkLabels(marks: List<Marks.Bookmark>): Array<String> =
+        marks.mapIndexed { i, mark ->
+            if (mark.label.isEmpty()) getString(R.string.bookmark_item, i + 1)
+            else "${i + 1}. ${mark.label}"
+        }.toTypedArray()
+
+    private fun removeBookmark(key: String) {
+        val marks = Marks.bookmarks(this, key)
+        if (marks.isEmpty()) return
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.bookmark_remove)
+            .setItems(bookmarkLabels(marks)) { _, which -> Marks.remove(this, key, marks[which].at) }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
     private fun savePosition() {
         val key = positionKey ?: return
+        if (currentKind == FileKind.TEXT) {
+            textTop?.let { Marks.setLeftAt(this, key, it) }
+            return
+        }
         if (pageAt < 1 || pageTotal < 2) return
         // A book that has said how far through it is but not yet where keeps the place it had
         if (book && bookPlace == null) return

@@ -351,6 +351,18 @@ function vwOpenText() {
   });
 }
 
+/*
+ * Where a page of [bytes] should end so that it stops after a line break, or [end] when
+ * there is none. A line break is byte 10 in UTF-8 and in EUC-KR, where it is never part
+ * of a longer character; UTF-16 is left out by the callers, since there it is not.
+ */
+function vwLineEnd(bytes, end) {
+  for (var i = end - 1; i >= 0; i--) {
+    if (bytes[i] === 10) return i + 1;
+  }
+  return end;
+}
+
 function vwOpenTextPages() {
   return fetch(vwDocUrl()).then(function (r) {
     if (!r.ok) throw new Error("Could not read the file (HTTP " + r.status + ")");
@@ -360,6 +372,9 @@ function vwOpenTextPages() {
     // unfamiliar encoding degrades to replacement characters rather than an error
     var decoder = null;
     var first = true;
+    // Whether pages may end at a line break, decided from the first page. A page cut
+    // in the middle of a sentence used to leave its last sentence half shown.
+    var lineSafe = null;
     function decode(bytes, last) {
       if (!decoder) {
         var encoding = vwEncodingOf(bytes);
@@ -390,6 +405,10 @@ function vwOpenTextPages() {
             var pageSize = first ? VW_TEXT_FIRST_PAGE : VW_TEXT_PAGE;
             first = false;
             var end = Math.min(off + pageSize, all.length);
+            if (lineSafe === null) lineSafe = vwEncodingOf(all.subarray(off, off + 2)) === "utf-8";
+            if (end < all.length && lineSafe) {
+              end = off + vwLineEnd(all.subarray(off, end), end - off);
+            }
             var page = all.subarray(off, end);
             off = end;
             return Promise.resolve(decode(page, off >= all.length));
@@ -432,7 +451,19 @@ function vwOpenTextPages() {
             else pending[0] = chunk.subarray(n);
           }
           held -= take;
-          return decode(page, ended && held === 0);
+          if (lineSafe === null) lineSafe = vwEncodingOf(page) === "utf-8";
+          var final = ended && held === 0;
+          if (!final && lineSafe) {
+            // Hold back what follows the last line break, to open the next page with it
+            var cut = vwLineEnd(page, page.length);
+            if (cut < page.length) {
+              var rest = page.subarray(cut);
+              pending.unshift(rest);
+              held += rest.length;
+              page = page.subarray(0, cut);
+            }
+          }
+          return decode(page, final);
         });
       }
     };
@@ -614,5 +645,5 @@ function vwFormatSize(bytes) {
  */
 window.onerror = function (message) {
   if (/ResizeObserver loop/.test(String(message))) return;
-  vwError("Something went wrong while rendering", String(message));
+  vwError("그리는 중 문제가 생겼습니다", String(message));
 };

@@ -17,7 +17,7 @@ if (!vwWebViewTooOld("Markdown files")) {
       content.dir = vwMostlyRightToLeft(proseText(content)) ? "rtl" : "ltr";
       vwStatusDone();
     })
-    .catch(function (e) { vwError("Could not render this Markdown file", String(e)); });
+    .catch(function (e) { vwError("이 마크다운 파일을 표시할 수 없습니다", String(e)); });
 }
 
 /* A picture named by a path from the file's own folder is asked of DocumentServer, which finds it

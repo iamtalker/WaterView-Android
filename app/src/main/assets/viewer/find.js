@@ -398,6 +398,8 @@ var vwFind = (function () {
       if (q === query) return;
       query = q;
       if (!q) { clear(); return; }
+      /* A page that has not all been read yet, as a long text file has not, reads the rest before
+         it searches, so a match further on is found too */
       search();
       begin();
     } else if (verb === "n") {

@@ -352,7 +352,7 @@
     s.failed = true;
     var note = document.createElement("div");
     note.className = "pg-note";
-    note.textContent = "This page could not be drawn";
+    note.textContent = "이 쪽을 그릴 수 없습니다";
     s.box.appendChild(note);
     if (!shown) {
       shown = true;
@@ -531,7 +531,7 @@
           "WaterView could not read the file it was given. Opening it again usually settles this."
         ];
       default:
-        return ["Could not render this PDF", "Its renderer stopped."];
+        return ["이 PDF를 표시할 수 없습니다", "렌더러가 멈췄습니다."];
     }
   }
 
@@ -590,7 +590,7 @@
       if (count < logicalTotal) {
         var cut = document.createElement("div");
         cut.className = "vw-cut";
-        cut.textContent = "The simple view shows the first " + count + " pages of this PDF.";
+        cut.textContent = "간단히 보기는 이 PDF의 앞 " + count + "쪽만 보여 줍니다.";
         pages.appendChild(cut);
       }
       var resumeAt = Math.floor(Number(vwParams.get("resume")));
@@ -608,6 +608,6 @@
     if (!r.ok) throw new Error("Could not read the file (HTTP " + r.status + ")");
     return r.json();
   }).then(begin).catch(function (e) {
-    vwError("Could not render this PDF", String(e));
+    vwError("이 PDF를 표시할 수 없습니다", String(e));
   });
 })();

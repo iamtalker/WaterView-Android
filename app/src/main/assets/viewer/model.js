@@ -195,7 +195,7 @@ function vwModelMaxTriangles() {
 
 function vwModelTooLarge(triangles, most) {
   return vwModelProblem(
-    "This model is too large to show",
+    "이 모델은 너무 커서 보여 줄 수 없습니다",
     "WaterView draws up to " + vwModelCount(most) + " triangles on a phone with this much " +
     "memory, and this model has " + (triangles > 0 ? vwModelCount(triangles) : "more") + "."
   );
@@ -207,7 +207,7 @@ function vwModelStart() {
   try {
     vwModelProgram = vwModelLink(vwModelGl);
   } catch (e) {
-    if (!vwModelGl.isContextLost()) vwModelFail("Could not show this model", String(e.message || e));
+    if (!vwModelGl.isContextLost()) vwModelFail("이 모델을 보여 줄 수 없습니다", String(e.message || e));
     return;
   }
   vwModelRead(run)
@@ -224,7 +224,7 @@ function vwModelStart() {
     .catch(function (e) {
       // A read overtaken by a lost context says nothing: the restore reads the file again
       if (run !== vwModelRun) return;
-      vwModelFail(e.title || "Could not show this model", String(e.message || e));
+      vwModelFail(e.title || "이 모델을 보여 줄 수 없습니다", String(e.message || e));
     });
 }
 
@@ -262,12 +262,12 @@ function vwModelRead(run) {
       if (run !== vwModelRun) throw new Error("superseded");
       stl.push(bytes);
       got += bytes.length;
-      if (showing) card.textContent = "Opening model\u2026 " + Math.floor(100 * got / total) + "%";
+      if (showing) card.textContent = "모델을 여는 중… " + Math.floor(100 * got / total) + "%";
     }).then(function () {
       stl.end();
       mesh.finish();
       if (!mesh.triangles) {
-        throw vwModelProblem("This model is empty", "There are no triangles in it to draw.");
+        throw vwModelProblem("이 모델은 비어 있습니다", "그릴 삼각형이 없습니다.");
       }
       return mesh;
     }).then(null, function (e) {
@@ -424,8 +424,8 @@ function vwModelBuilder(gl, most) {
       if (err === gl.OUT_OF_MEMORY) outOfMemory = true;
     }
     if (outOfMemory) {
-      throw vwModelProblem("This model is too large to show",
-        "The phone ran out of graphics memory while reading it.");
+      throw vwModelProblem("이 모델은 너무 커서 보여 줄 수 없습니다",
+        "읽는 동안 그래픽 메모리가 부족했습니다.");
     }
     mesh.min = [minX, minY, minZ];
     mesh.max = [maxX, maxY, maxZ];

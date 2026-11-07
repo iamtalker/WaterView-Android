@@ -4,7 +4,15 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FF000000"
-        android:pathData="M54,9 C47,23 31,41 31,55 C31,68 41,78 54,78 C67,78 77,68 77,55 C77,41 61,23 54,9 Z" />
+    <!-- Same scale and centring as the foreground, so the themed icon matches it. -->
+    <group
+        android:scaleX="0.8"
+        android:scaleY="0.8"
+        android:pivotX="54"
+        android:pivotY="54"
+        android:translateY="9.2">
+        <path
+            android:fillColor="#FF000000"
+            android:pathData="M54,9 C47,23 31,41 31,55 C31,68 41,78 54,78 C67,78 77,68 77,55 C77,41 61,23 54,9 Z" />
+    </group>
 </vector>

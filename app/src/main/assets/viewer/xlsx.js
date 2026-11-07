@@ -1024,7 +1024,7 @@ VwLooks.prototype.inkClass = function (hex) {
 vwFetchDoc("buffer")
   .then(function (buf) {
     var wb = readWorkbook(new Uint8Array(buf));
-    if (!wb.SheetNames.length) throw new Error("The workbook has no sheets");
+    if (!wb.SheetNames.length) throw new Error("이 통합 문서에는 시트가 없습니다");
     var root = document.documentElement;
     var tabs = document.getElementById("tabs");
     var sheetDiv = document.getElementById("sheet");
@@ -1437,7 +1437,7 @@ vwFetchDoc("buffer")
       var text = sheet.text(cell);
       valueEl.textContent = text;
       valueEl.classList.toggle("vw-cb-none", !text);
-      if (!text) valueEl.textContent = "Empty";
+      if (!text) valueEl.textContent = "비어 있음";
       moreEl.textContent = "";
       if (cell && cell.f) moreEl.appendChild(line("vw-cb-formula", "", "=" + cell.f));
       else if (cell && (cell.t === "n" || cell.t === "d") && cell.v !== undefined) {
@@ -1734,4 +1734,4 @@ vwFetchDoc("buffer")
     vwStatusDone();
     held();
   })
-  .catch(function (e) { vwError("Could not open this spreadsheet", String(e)); });
+  .catch(function (e) { vwError("이 스프레드시트를 열 수 없습니다", String(e)); });

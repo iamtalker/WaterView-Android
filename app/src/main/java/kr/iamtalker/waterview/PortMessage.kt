@@ -19,6 +19,9 @@ package kr.iamtalker.waterview
  * Inbound is space separated and read here.
  */
 
+/** The most of the text after a place that a bookmark is named by. */
+private const val SNIPPET_MAX = 40
+
 /** What ViewerActivity sends. One letter, then the rest is payload. */
 internal object PortCommand {
     /** Set the query. Arbitrary text, never parsed as anything but text. */
@@ -56,6 +59,9 @@ internal object PortCommand {
 
     /** Back, for a page that has said it has something to do first. See [PortMessage.Covered]. */
     fun closeOver() = "x"
+
+    /** Go to a character of a text file, counted from its start. See [PortMessage.Offset]. */
+    fun goToOffset(at: Long) = "j$at"
 }
 
 /** What a page sends back, once it has been read and found sound. */
@@ -98,6 +104,12 @@ internal sealed interface PortMessage {
      */
     data class Reflows(val on: Boolean) : PortMessage
 
+    /**
+     * Where the top of a text file's screen is, as a count of characters from its start. What a
+     * bookmark and the place a text file reopens at are kept as.
+     */
+    data class Offset(val at: Long, val snippet: String = "") : PortMessage
+
     /** The reader asked on the card for the PDF's simple view. See [ViewerActivity.askForSimpleView]. */
     data object SimpleView : PortMessage
 
@@ -130,6 +142,13 @@ internal fun parsePortMessage(data: String?): PortMessage? {
         "shrunk 0" -> return PortMessage.Shrunk(false)
     }
     val said = data?.split(" ") ?: return null
+    // "tx <n> <words>", where the words are the text from there on and may hold spaces of their own
+    if (said[0] == "tx" && said.size >= 2) {
+        val at = said[1].toLongOrNull() ?: return null
+        if (at < 0) return null
+        val words = said.drop(2).joinToString(" ").take(SNIPPET_MAX)
+        return PortMessage.Offset(at, words)
+    }
     if (said.size != 3) return null
 
     if (said[0] == "at") {

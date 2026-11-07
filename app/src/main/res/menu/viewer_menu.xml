@@ -28,6 +28,36 @@
         android:title="@string/go_to_page"
         android:visible="false"
         app:showAsAction="never" />
+    <!-- A text file's bookmarks: add one where the screen is, or go to one of those already put in.
+         Hidden for every other format. -->
+    <item
+        android:id="@+id/action_bookmark_add"
+        android:title="@string/add_bookmark"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_bookmarks"
+        android:title="@string/bookmarks"
+        android:visible="false"
+        app:showAsAction="never" />
+    <!-- A text file's line breaks joined into paragraphs. Hidden for every other format. -->
+    <item
+        android:id="@+id/action_text_reflow"
+        android:checkable="true"
+        android:title="@string/text_reflow"
+        android:visible="false"
+        app:showAsAction="never" />
+    <!-- The files either side of this one in the folder it was opened from, where the folder is known -->
+    <item
+        android:id="@+id/action_previous_file"
+        android:title="@string/previous_file"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_next_file"
+        android:title="@string/next_file"
+        android:visible="false"
+        app:showAsAction="never" />
     <!-- Turns a document's pages over for reading in the dark: a PDF's since issue #19, a
          Word document's since #47. Hidden for every other format. -->
     <item

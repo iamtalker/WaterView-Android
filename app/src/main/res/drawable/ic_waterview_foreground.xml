@@ -4,7 +4,16 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FF62BAEE"
-        android:pathData="M54,10 C48,23 32,40 32,53 A22,22 0 0 0 76,53 C76,40 60,23 54,10 Z" />
+    <!-- Scaled to 0.8 and centred inside the 66dp safe zone. The drop used to reach y=10,
+         outside the 18dp inset every adaptive icon mask may crop, so its tip was cut. -->
+    <group
+        android:scaleX="0.8"
+        android:scaleY="0.8"
+        android:pivotX="54"
+        android:pivotY="54"
+        android:translateY="9.2">
+        <path
+            android:fillColor="#FF62BAEE"
+            android:pathData="M54,10 C48,23 32,40 32,53 A22,22 0 0 0 76,53 C76,40 60,23 54,10 Z" />
+    </group>
 </vector>

@@ -94,6 +94,23 @@
     <!-- Also the TalkBack label for removing a row, which the swipe does -->
     <string name="remove">삭제</string>
     <string name="search_in_document">문서에서 찾기</string>
+    <string name="add_bookmark">북마크 추가</string>
+    <string name="bookmarks">북마크 목록</string>
+    <string name="bookmark_added">북마크를 추가했습니다.</string>
+    <string name="bookmark_exists">이 위치에는 이미 북마크가 있습니다.</string>
+    <string name="no_bookmarks">저장된 북마크가 없습니다.</string>
+    <string name="bookmark_item">북마크 %1$d</string>
+    <string name="bookmark_remove">삭제</string>
+    <string name="text_reflow">줄바꿈 정리</string>
+    <string name="update_checking">업데이트를 확인하는 중…</string>
+    <string name="update_latest">최신 버전입니다.</string>
+    <string name="update_new_version">새 버전 %1$s</string>
+    <string name="update_install_hint">최신 APK를 앱 안에서 내려받아 설치합니다.</string>
+    <string name="update_confirm">업데이트</string>
+    <string name="update_opening">설치 확인 화면을 엽니다.</string>
+    <string name="update_failed">업데이트 실패: %1$s</string>
+    <string name="previous_file">이전 파일</string>
+    <string name="next_file">다음 파일</string>
     <string name="share_file">공유</string>
     <string name="show_in_file_manager">파일 관리자에서 보기</string>
     <string name="no_file_manager">이 폴더를 열 수 있는 앱이 없습니다.</string>
@@ -148,15 +165,6 @@
     <string name="open_with_hint">팁: 파일 관리자에서 파일을 누른 다음 ‘다른 앱으로 열기 > 물뷰’를 선택하세요.</string>
     <string name="back">뒤로</string>
     <string name="about_waterview">물뷰 정보</string>
-    <!-- The two home menu items above About WaterView. That one already names the app, so
-         these stay short and start with a verb. Rate appears where Google Play installed
-         the copy, and Switch to Google Play takes its place anywhere else. -->
-    <string name="rate_app">평가하기</string>
-    <string name="switch_to_play">Google Play로 전환</string>
-    <string name="share_app">공유</string>
-    <!-- What Share hands over. The link is the site rather than the Play listing, so it
-         works for whoever receives it, however they install. -->
-    <string name="share_app_text">안드로이드용 오프라인 파일 뷰어, 물뷰: %1$s</string>
     <string name="about_version">버전 %1$s</string>
     <string name="about_permissions_label">앱 권한</string>
     <string name="about_permissions_none">없음</string>
@@ -205,9 +213,6 @@
     <string name="print_failed">파일을 인쇄할 수 없습니다.</string>
     <string name="url_author" translatable="false">https://arjun.maniyani.com/</string>
     <string name="url_source" translatable="false">https://github.com/iamtalker/WaterView-Android</string>
-    <string name="url_site" translatable="false">https://github.com/iamtalker/WaterView-Android</string>
-    <!-- Only reached when the Play Store app will not open the listing itself -->
-    <string name="url_play_listing" translatable="false">https://play.google.com/store/apps/details?id=%1$s</string>
     <!-- Folder sort and filter -->
     <string name="sort_by">정렬</string>
     <string name="filter">필터</string>

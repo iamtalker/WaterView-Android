@@ -281,5 +281,5 @@ if (!vwWebViewTooOld("Word documents")) {
       vwStatusDone();
       vwFollowPages();
     })
-    .catch(function (e) { vwError("Could not render this Word document", String(e)); });
+    .catch(function (e) { vwError("이 워드 문서를 표시할 수 없습니다", String(e)); });
 }

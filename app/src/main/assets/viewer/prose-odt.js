@@ -1055,7 +1055,7 @@ function odtEntry(zip, name) {
   if (!entry) return Promise.resolve(null);
   var size = entry._data && entry._data.uncompressedSize;
   if (size > ODT_MAX_XML) {
-    return Promise.reject(new Error("This document is too large to open here."));
+    return Promise.reject(new Error("이 문서는 너무 커서 열 수 없습니다."));
   }
   return entry.async("string");
 }
@@ -1079,7 +1079,7 @@ function vwReadOdt(buffer, container) {
             throw new Error("This document is protected by a password, and WaterView " +
               "cannot open password-protected OpenDocument files.");
           }
-          if (!parts[0]) throw new Error("This file has no document inside it.");
+          if (!parts[0]) throw new Error("이 파일 안에 문서가 없습니다.");
           return {
             zip: zip,
             content: odtParse(parts[0], "text"),

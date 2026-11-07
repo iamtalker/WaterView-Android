@@ -31,12 +31,12 @@ if (vwPdfBlocked && vwParams.get("simple") === "1") {
     var button = document.createElement("button");
     button.type = "button";
     button.className = "vw-simple-btn";
-    button.textContent = "Open in simple view";
+    button.textContent = "간단히 보기로 열기";
     button.setAttribute("aria-describedby", "vw-simple-caveat");
     var caveat = document.createElement("div");
     caveat.id = "vw-simple-caveat";
     caveat.className = "vw-simple-caveat";
-    caveat.textContent = "Shows the pages as pictures, without search, text selection or form entries.";
+    caveat.textContent = "쪽을 그림으로 보여 주며, 검색·글자 선택·양식 입력은 되지 않습니다.";
     card.appendChild(button);
     card.appendChild(caveat);
 
