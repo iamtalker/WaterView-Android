@@ -207,7 +207,7 @@ internal class OverChrome(
 }
 
 /** What a screen reader hears of a view whose click only shows or hides the bars over it: no click. */
-private object TapForTheEye : AccessibilityDelegateCompat() {
+internal object TapForTheEye : AccessibilityDelegateCompat() {
     override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
         super.onInitializeAccessibilityNodeInfo(host, info)
         info.isClickable = false

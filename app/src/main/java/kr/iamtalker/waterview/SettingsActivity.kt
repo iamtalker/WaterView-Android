@@ -16,6 +16,49 @@ class SettingsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_settings)
         findViewById<MaterialToolbar>(R.id.settingsToolbar).setNavigationOnClickListener { finish() }
 
+        val groundRow = findViewById<View>(R.id.groundRow)
+        val groundValue = findViewById<TextView>(R.id.groundValue)
+        val groundNames = resources.getStringArray(R.array.ground_choices)
+        fun refreshGround() {
+            groundValue.text = groundNames[Settings.groundIndex(this)]
+        }
+        groundRow.setOnClickListener {
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.ground_title)
+                .setSingleChoiceItems(R.array.ground_choices, Settings.groundIndex(this)) { dialog, which ->
+                    Settings.setGroundIndex(this, which)
+                    refreshGround()
+                    dialog.dismiss()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+        refreshGround()
+
+        val themeRow = findViewById<View>(R.id.themeRow)
+        val themeValue = findViewById<TextView>(R.id.themeValue)
+        fun refreshTheme() {
+            themeValue.setText(if (Settings.appNight(this)) R.string.theme_night else R.string.theme_day)
+        }
+        themeRow.setOnClickListener {
+            val checked = if (Settings.appNight(this)) 1 else 0
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.theme_title)
+                .setSingleChoiceItems(R.array.theme_choices, checked) { dialog, which ->
+                    val night = which == 1
+                    Settings.setAppNight(this, night)
+                    androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+                        if (night) androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                        else androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+                    )
+                    refreshTheme()
+                    dialog.dismiss()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+        refreshTheme()
+
         val direction = findViewById<View>(R.id.mangaDirectionRow)
         val directionValue = findViewById<TextView>(R.id.mangaDirectionValue)
         fun refreshDirection() {

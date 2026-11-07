@@ -241,6 +241,20 @@
         <item>@string/manga_direction_left_to_right</item>
         <item>@string/manga_direction_japanese</item>
     </string-array>
+    <string name="theme_title">화면 모드</string>
+    <string name="theme_day">주간 모드</string>
+    <string name="theme_night">야간 모드</string>
+    <string name="ground_title">배경색</string>
+    <string-array name="ground_choices">
+        <item>흰색</item>
+        <item>크림</item>
+        <item>연회색</item>
+        <item>연파랑</item>
+    </string-array>
+    <string-array name="theme_choices">
+        <item>@string/theme_day</item>
+        <item>@string/theme_night</item>
+    </string-array>
     <string-array name="pdf_reading_mode_choices">
         <item>@string/pdf_reading_mode_scroll</item>
         <item>@string/pdf_reading_mode_horizontal</item>

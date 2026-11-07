@@ -58,6 +58,7 @@ import androidx.core.content.IntentCompat
 import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebMessagePortCompat
@@ -193,17 +194,6 @@ open class ViewerActivity : AppCompatActivity() {
     /** Whether the page readout counts a folder's photos rather than a document's pages. */
     private var countsPhotos = false
 
-    private val createDocument = CreateTypedDocument()
-
-    /** Writes the open file wherever the reader points the picker. See [SaveCopy]. */
-    @androidx.annotation.VisibleForTesting
-    internal val copier by lazy { SaveCopy(this) }
-
-    private val saveCopy = registerForActivityResult(createDocument) { dest ->
-        val src = copySource
-        copySource = null
-        if (dest != null && src != null) copier.copy(src, dest)
-    }
 
     /**
      * The photo Android's prompt was opened for, kept across the viewer being made again while the
@@ -527,10 +517,6 @@ open class ViewerActivity : AppCompatActivity() {
         textSizeItem = toolbar.menu.findItem(R.id.action_text_size).apply {
             setOnMenuItemClickListener { askForTextSize(); true }
         }
-        rotateItem = toolbar.menu.findItem(R.id.action_rotate).apply {
-            setOnMenuItemClickListener { turnPhoto(); true }
-        }
-        updateRotate()
         setUpPrint(toolbar, kind, uri, name)
         pointActionsAt(toolbar, uri, name, ext, mime)
         toolbar.menu.findItem(R.id.action_settings).setOnMenuItemClickListener {
@@ -544,23 +530,6 @@ open class ViewerActivity : AppCompatActivity() {
      * through a folder's photos changes.
      */
     private fun pointActionsAt(toolbar: MaterialToolbar, uri: Uri, name: String, ext: String, mime: String?) {
-        toolbar.menu.findItem(R.id.action_share).setOnMenuItemClickListener {
-            shareFile(uri, ext, mime)
-            true
-        }
-        toolbar.menu.findItem(R.id.action_save_copy).setOnMenuItemClickListener {
-            copySource = uri
-            createDocument.type = mime
-                ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
-                ?: "*/*"
-            // No picker on the device is the only way this throws, and it leaves
-            // the reader on the document rather than on a crash
-            runCatching { saveCopy.launch(name) }.onFailure {
-                copySource = null
-                Toast.makeText(this, R.string.save_copy_failed, Toast.LENGTH_SHORT).show()
-            }
-            true
-        }
 
         val folder = containingFolder(uri)
         toolbar.menu.findItem(R.id.action_open_folder).apply {
@@ -630,6 +599,10 @@ open class ViewerActivity : AppCompatActivity() {
      * URL, but a control that could not change it would quietly do nothing.
      */
     private fun setUpNightMode(toolbar: MaterialToolbar, kind: FileKind) {
+        // The screen mode is chosen once in Settings, for every viewer, so there is no toggle here
+        toolbar.menu.findItem(R.id.action_night_mode)?.isVisible = false
+        return
+        @Suppress("UNREACHABLE_CODE")
         val item = toolbar.menu.findItem(R.id.action_night_mode)
         // Not for a card in place of the document, saying the WebView is too old or isn't there:
         // turning a card dark is not a feature. webViewFloorParams is non-empty exactly for the first.
@@ -988,14 +961,9 @@ open class ViewerActivity : AppCompatActivity() {
      * it is more than one page long, since nothing else sets the total.
      */
     private fun showPageIndicator() {
-        if (pageTotal < 2 || searchBarOpen) return
-        // While the thumb has hold of it, where the pill sits and whether it is up at
-        // all belong to the drag. The number is set where it changes, not here: this
-        // runs once a frame for the length of a fling, and the text is the same on all
-        // but the few frames that cross a page boundary.
-        if (dragging) return
-        pageFader.show()
-        restartPageIndicatorIdle()
+        // The floating pill is gone: the number now sits beside the position bar at the bottom,
+        // the same for every viewer, so nothing floats over the document any more.
+        pageFader.hideNow()
     }
 
     private fun setPageIndicatorText() {
@@ -1042,13 +1010,31 @@ open class ViewerActivity : AppCompatActivity() {
         }
     }
 
-    /** A center tap brings back the reader controls, as in an e-reader. */
+    /** Whether the viewer is maximized: no title bar, no position bar and no phone bars. */
+    private var maximized = false
+
+    /**
+     * A light tap in the middle of a document toggles maximized. Maximized hides the title bar, the
+     * position bar with its number and buttons, and the phone's own bars; the next tap brings them
+     * back. Not under a screen reader, which needs the controls to stay.
+     */
     private fun toggleReaderControls() {
-        val bar = findViewById<View>(R.id.readerBottomBar)
-        val visible = bar.visibility != View.VISIBLE
-        bar.visibility = if (visible) View.VISIBLE else View.GONE
-        if (documentChrome != null) documentChrome?.setReaderVisible(visible)
-        else findViewById<MaterialToolbar>(R.id.toolbar).visibility = if (visible) View.VISIBLE else View.GONE
+        if (touchExplorationOn()) return
+        setMaximized(!maximized)
+    }
+
+    private fun setMaximized(on: Boolean) {
+        maximized = on
+        findViewById<View>(R.id.readerBottomBar).visibility = if (on) View.GONE else View.VISIBLE
+        documentChrome?.setReaderVisible(!on)
+        pictureChrome?.show(!on)
+        val bars = WindowInsetsControllerCompat(window, window.decorView)
+        if (on) {
+            bars.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            bars.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            bars.show(WindowInsetsCompat.Type.systemBars())
+        }
     }
 
     /** Where a text file's screen is, from the page, for its bar and its percentage. */
@@ -1866,6 +1852,7 @@ open class ViewerActivity : AppCompatActivity() {
         setBackgroundColor(Color.BLACK)
         setMinimumScaleType(SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE)
         maxScale = 12f
+        setBackgroundColor(Settings.groundColor(this@ViewerActivity))
         // A light tap on a picture brings the controls up or takes them away
         setOnClickListener { toggleReaderControls() }
         // The library's own double tap went to a picture pixel a dp, nine times a phone's photo
@@ -1884,7 +1871,8 @@ open class ViewerActivity : AppCompatActivity() {
         })
         // A tap hides the title bar and the phone's bars, and the next brings them back. The view
         // takes a tap as a click only once no second tap has followed to make a double tap.
-        pictureChrome?.takeTapsOn(this)
+        setOnClickListener { toggleReaderControls() }
+        ViewCompat.setAccessibilityDelegate(this, TapForTheEye)
     }
 
     /**
@@ -1922,17 +1910,8 @@ open class ViewerActivity : AppCompatActivity() {
         return pager.stillShown?.let { pager.shown to it }
     }
 
-    /** Rotate goes with the tiling view: a picture that moves, or one it can't draw, is drawn by a page. */
-    private fun updateRotate() {
-        rotateItem?.isVisible = stillOnScreen() != null
-    }
-
-    /** The photo on screen a quarter turn on, clockwise, and kept that way for when it is shown again. */
-    private fun turnPhoto() {
-        val (photo, still) = stillOnScreen() ?: return
-        still.turnOn()
-        turns[photo.toString()] = still.turn
-    }
+    /** Rotation is not offered: a photo shows the way the file holds it. */
+    private fun updateRotate() = Unit
 
     /**
      * A photo opened from a folder added in WaterView, with the folder's other photos a swipe away.
@@ -2029,7 +2008,6 @@ open class ViewerActivity : AppCompatActivity() {
             // The bar under the toolbar that a save reports on, doing the same job for the
             // list that the home screen's does for a folder
             progress = findViewById(R.id.saveProgress),
-            saving = { copier.saving },
             archive = uri,
             archiveName = name,
             restoredFolder = state?.getString(STATE_ARCHIVE_FOLDER),
@@ -2207,7 +2185,7 @@ open class ViewerActivity : AppCompatActivity() {
         val pictureTaps = if (kind == FileKind.IMAGE_WEB) {
             GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
                 override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                    pictureChrome?.toggle()
+                    toggleReaderControls()
                     return false
                 }
             })
@@ -2279,7 +2257,7 @@ open class ViewerActivity : AppCompatActivity() {
         // instead of drawing itself white and then again. It is also the only route that
         // survives process death and the recreate() in showRendererGone, neither of which
         // leaves a port to send anything down.
-        val night = if (kind.turnsOver && Settings.night(this)) 1 else 0
+        val night = if ((kind.turnsOver || kind == FileKind.TEXT || kind == FileKind.MD) && Settings.night(this)) 1 else 0
         loadedNight = night == 1
         // The page a PDF or a book was left at goes the same way, for the same two reasons and one
         // more: a document that opened at the top and then jumped would spend its opening
@@ -2319,6 +2297,7 @@ open class ViewerActivity : AppCompatActivity() {
                     (if (kind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE) && Settings.pdfHorizontalPages(this)) "&pageMode=1" else "") +
                     (if (total > 0) "&length=$total" else "") +
                     "&night=$night" +
+                    (if (night == 0) "&ground=${Settings.GROUNDS[Settings.groundIndex(this)]}" else "") +
                     (if (resumeAt > 1) "&resume=$resumeAt" else "") +
                     (placeAt?.let { "&at=${it.chapter}.${it.past}" } ?: "") +
                     (markAt?.let { "&mark=$it" } ?: "") +

@@ -16,6 +16,8 @@ var shown = 0;
 var firstPage = true;
 // Whether every page has been read: nothing further to go to past what is shown
 var finished = false;
+// The app's own night mode, as the URL says it (the settings choose it)
+if (vwParams.get("night") === "1") document.documentElement.classList.add("vw-night");
 // Whether line breaks are joined into paragraphs, as the app asks for it in the URL
 var reflow = vwParams.get("reflow") === "1";
 

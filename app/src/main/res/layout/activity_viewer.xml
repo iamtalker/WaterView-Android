@@ -170,17 +170,37 @@
         android:orientation="vertical"
         android:background="?attr/colorSurface"
         android:elevation="6dp">
-        <SeekBar
-            android:id="@+id/pdfPageSeek"
+        <!-- The position bar and its number on one row for every viewer: the number sits beside
+             the bar, and the bar moves the document (text by its place, PDF and comics by page). -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="28dp"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:progressTint="?attr/colorPrimary"
-            android:progressBackgroundTint="?attr/colorOutlineVariant"
-            android:thumbTint="?attr/colorPrimary"
-            android:visibility="gone"
-            android:contentDescription="@string/pdf_page_position" />
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
+
+            <SeekBar
+                android:id="@+id/pdfPageSeek"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:progressTint="?attr/colorPrimary"
+                android:progressBackgroundTint="?attr/colorOutlineVariant"
+                android:thumbTint="?attr/colorPrimary"
+                android:visibility="gone"
+                android:contentDescription="@string/pdf_page_position" />
+
+            <TextView
+                android:id="@+id/bottomPageCounter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="56dp"
+                android:gravity="center"
+                android:paddingStart="8dp"
+                android:textAppearance="?attr/textAppearanceLabelLarge"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -202,14 +222,10 @@
                 android:clickable="true"
                 android:focusable="true" />
 
-            <TextView
-                android:id="@+id/bottomPageCounter"
+            <View
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:textAppearance="?attr/textAppearanceBodyMedium"
-                android:textColor="?attr/colorOnSurfaceVariant" />
+                android:layout_weight="1" />
 
             <TextView
                 android:id="@+id/bottomNext"

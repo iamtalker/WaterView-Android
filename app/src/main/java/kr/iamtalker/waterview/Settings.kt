@@ -24,6 +24,7 @@ object Settings {
     private const val KEY_PDF_HORIZONTAL = "pdf_horizontal_pages"
     private const val KEY_PDF_SPLIT_WIDE = "pdf_split_wide_pages"
     private const val KEY_TEXT_REFLOW = "text_reflow"
+    private const val KEY_APP_NIGHT = "app_night"
 
     fun mangaRightToLeft(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_MANGA_RTL, false)
@@ -44,6 +45,14 @@ object Settings {
 
     fun setPdfHorizontalPages(context: Context, value: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_PDF_HORIZONTAL, value) }
+    }
+
+    /** The app's own screen mode: true for night, false for day. Applied at start-up and on change. */
+    fun appNight(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_APP_NIGHT, false)
+
+    fun setAppNight(context: Context, on: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_APP_NIGHT, on) }
     }
 
     /**
@@ -82,14 +91,27 @@ object Settings {
     }
 
     /** Whether PDF pages are drawn turned over. See issue #19 and `pdf.html`. */
-    fun night(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_NIGHT, false)
+    /** The paper colours a reader can choose, as hex without the #, in the order the settings list them. */
+    val GROUNDS = listOf("FFFFFF", "F5EFE0", "E0E0E0", "E3EEF7")
 
-    fun setNight(context: Context, on: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit { putBoolean(KEY_NIGHT, on) }
+    private const val KEY_GROUND = "ground_index"
+
+    fun groundIndex(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_GROUND, 0).coerceIn(0, GROUNDS.size - 1)
+
+    fun setGroundIndex(context: Context, index: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putInt(KEY_GROUND, index) }
     }
+
+    /** The background of every viewer in day mode; night keeps its own black. */
+    fun groundColor(context: Context): Int =
+        if (appNight(context)) android.graphics.Color.BLACK
+        else android.graphics.Color.parseColor("#" + GROUNDS[groundIndex(context)])
+
+    /** The one screen mode for the whole app and every viewer: the setting in Settings. */
+    fun night(context: Context): Boolean = appNight(context)
+
+    fun setNight(context: Context, on: Boolean) = setAppNight(context, on)
 
     /** The size of a book's text, one of [BOOK_TEXT_SIZES]. The same for every book. */
     fun bookTextSize(context: Context): Int {

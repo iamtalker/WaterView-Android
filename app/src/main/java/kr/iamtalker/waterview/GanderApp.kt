@@ -23,7 +23,13 @@ class WaterViewApp : Application() {
         super.onCreate()
         // PdfRenderService's isolated process starts here too. It never shows a WebView and
         // has no data directory to give one, so starting Chromium there would only cost memory.
+        // It also has no preferences to read, so nothing below may run there.
         if (isIsolatedProcess()) return
+        // The screen mode the reader chose in settings, before any activity draws
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+            if (Settings.appNight(this)) androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+            else androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+        )
         // A throwaway daemon thread rather than a pool: this runs once per process.
         val warmUpThread = Executor { r ->
             Thread(r, "webview-warmup").apply { isDaemon = true }.start()

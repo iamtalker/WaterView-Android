@@ -166,8 +166,6 @@ internal class ArchiveBrowser(
     private val activity: AppCompatActivity,
     private val toolbar: MaterialToolbar,
     private val progress: LinearProgressIndicator,
-    /** Whether Save a copy is reporting on [progress], which is then left to it. */
-    private val saving: () -> Boolean,
     private val archive: Uri,
     private val archiveName: String,
     /** Where the reader was before a configuration change, or null for the top. */
@@ -332,7 +330,6 @@ internal class ArchiveBrowser(
         // Indeterminate, set before it shows: the bar is the one a save reports on, and it is
         // left determinate at nought, which would draw as an empty track that never moves
         val announce = Runnable {
-            if (saving()) return@Runnable
             progress.isIndeterminate = true
             progress.visibility = View.VISIBLE
             shown = true
@@ -340,7 +337,7 @@ internal class ArchiveBrowser(
         main.postDelayed(announce, PROGRESS_DELAY_MS)
         return {
             main.removeCallbacks(announce)
-            if (shown && !saving()) progress.visibility = View.GONE
+            if (shown) progress.visibility = View.GONE
         }
     }
 

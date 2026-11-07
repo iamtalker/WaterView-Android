@@ -1,6 +1,13 @@
 "use strict";
 
 var vwParams = new URLSearchParams(location.search);
+/* The paper colour the reader chose in settings, for every viewer's ground in day mode. Night keeps its own. */
+(function () {
+  var g = vwParams.get("ground");
+  if (g && vwParams.get("night") !== "1" && /^[0-9A-Fa-f]{6}$/.test(g)) {
+    document.documentElement.style.setProperty("--vw-ground", "#" + g);
+  }
+})();
 var vwName = vwParams.get("name") || "file";
 var vwExt = (vwParams.get("ext") || "").toLowerCase();
 
