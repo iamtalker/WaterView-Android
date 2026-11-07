@@ -402,6 +402,9 @@ open class ViewerActivity : AppCompatActivity() {
      */
     private fun pdfRouteHere(): PdfRoute {
         val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        if (Settings.pdfSplitWidePages(this) && PdfRenderClient.containedOn(Build.VERSION.SDK_INT)) {
+            return PdfRoute.SIMPLE
+        }
         if (debuggable && intent.getBooleanExtra(EXTRA_SIMPLE_VIEW, false) &&
             PdfRenderClient.containedOn(Build.VERSION.SDK_INT)
         ) return PdfRoute.SIMPLE
@@ -777,15 +780,21 @@ open class ViewerActivity : AppCompatActivity() {
     /** The format currently on screen, for the reader's bottom page controls. */
     private var currentKind: FileKind? = null
 
-    private data class MangaConfig(val rtl: Boolean)
+    private data class MangaConfig(val rtl: Boolean, val splitWide: Boolean)
     private var appliedMangaConfig: MangaConfig? = null
+    private var appliedPdfSplitWide: Boolean? = null
 
-    private fun mangaConfig() = MangaConfig(Settings.mangaRightToLeft(this))
+    private fun mangaConfig() = MangaConfig(
+        Settings.mangaRightToLeft(this),
+        Settings.splitWidePages(this),
+    )
 
     override fun onResume() {
         super.onResume()
-        val applied = appliedMangaConfig ?: return
-        if (applied != mangaConfig()) recreate()
+        if (appliedMangaConfig?.let { it != mangaConfig() } == true ||
+            (currentKind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE) &&
+                appliedPdfSplitWide?.let { it != Settings.pdfSplitWidePages(this) } == true)
+        ) recreate()
     }
 
     @androidx.annotation.VisibleForTesting
@@ -1851,7 +1860,7 @@ open class ViewerActivity : AppCompatActivity() {
             this, opened, first, photoHost,
             uriOverride = { Uri.parse(it.docId) },
             rightToLeft = Settings.mangaRightToLeft(this),
-            splitWidePages = true,
+            splitWidePages = Settings.splitWidePages(this),
         )
         photoPager = pager
         photosListed = true
@@ -1917,6 +1926,9 @@ open class ViewerActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     private fun showWeb(container: FrameLayout, uri: Uri, kind: FileKind, name: String, ext: String) {
+        if (kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE) {
+            appliedPdfSplitWide = Settings.pdfSplitWidePages(this)
+        }
         // Android throws here when it has no working WebView: while Android System WebView is
         // being updated, or where someone has turned it off
         val web = runCatching { ScrollProbeWebView(this) }.getOrElse {
@@ -2170,6 +2182,7 @@ open class ViewerActivity : AppCompatActivity() {
             web.loadUrl(
                 "https://$ASSET_HOST/assets/viewer/${kind.page}" +
                     "?name=${Uri.encode(name)}&ext=${Uri.encode(ext)}&ranged=$ranged" +
+                    (if (kind == FileKind.PDF_SIMPLE && Settings.pdfSplitWidePages(this)) "&splitwide=1" else "") +
                     (if (total > 0) "&length=$total" else "") +
                     "&night=$night" +
                     (if (resumeAt > 1) "&resume=$resumeAt" else "") +

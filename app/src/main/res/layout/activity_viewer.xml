@@ -196,6 +196,18 @@
             android:textColor="?attr/colorOnSurfaceVariant" />
 
         <TextView
+            android:id="@+id/bottomNext"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/next_page"
+            android:gravity="center"
+            android:text="›"
+            android:textAppearance="?attr/textAppearanceHeadlineSmall"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <TextView
             android:id="@+id/bottomSettings"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
@@ -207,18 +219,6 @@
             android:paddingEnd="12dp"
             android:text="@string/settings"
             android:textAppearance="?attr/textAppearanceLabelLarge"
-            android:clickable="true"
-            android:focusable="true" />
-
-        <TextView
-            android:id="@+id/bottomNext"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/next_page"
-            android:gravity="center"
-            android:text="›"
-            android:textAppearance="?attr/textAppearanceHeadlineSmall"
             android:clickable="true"
             android:focusable="true" />
     </LinearLayout>

@@ -66,6 +66,8 @@
   /* Pages laid out, and pages the document has: the same unless the column ran out. */
   var count = 0;
   var total = 0;
+  var splitWide = false;
+  var virtualPages = null;
 
   /*
    * Page 1's shape, height over width, which stands for every page whose own is not known, as it
@@ -295,13 +297,26 @@
       else if (!s.dead) s.failed = true;
       later();
     };
-    img.src = "/render/page?n=" + (s.n + 1) + "&w=" + drawWidth() + "&night=" + (mode ? 1 : 0);
+    var part = splitWide ? virtualPages[s.n] : null;
+    var physical = part ? part.physical : s.n;
+    img.src = "/render/page?n=" + (physical + 1) + "&w=" + (drawWidth() * (part && part.half !== null ? 2 : 1)) + "&night=" + (mode ? 1 : 0);
   }
 
   function landed(s, img, mode) {
     /* Drawn the other way round from what is wanted now: pump() asks again */
     if (mode !== night && s.img) return;
-    if (img.naturalWidth > 0 && shape(s.n, img.naturalHeight / img.naturalWidth)) spacers();
+    var part = splitWide ? virtualPages[s.n] : null;
+    if (img.naturalWidth > 0 && shape(s.n, img.naturalHeight / img.naturalWidth * (part && part.half !== null ? 2 : 1))) spacers();
+    if (part && part.half !== null) {
+      img.style.position = "absolute";
+      img.style.top = "0";
+      img.style.left = part.half ? "-100%" : "0";
+      img.style.width = "200%";
+      img.style.height = "100%";
+      img.style.maxWidth = "none";
+      s.box.style.position = "relative";
+      s.box.style.overflow = "hidden";
+    }
     if (s.img) s.box.replaceChild(img, s.img); else s.box.appendChild(img);
     s.img = img;
     s.mode = mode;
@@ -383,16 +398,18 @@
     while (from <= to && sized[from]) from++;
     while (to >= from && sized[to]) to--;
     if (from > to) return Promise.resolve();
-    return fetch("/render/sizes?from=" + (from + 1) + "&to=" + (to + 1)).then(function (r) {
-      return r.ok ? r.json() : null;
-    }).then(function (said) {
-      var all = said && said.sizes;
-      if (!all || jump !== jumps) return;
-      for (var k = 0; k < all.length && from + k <= to; k++) {
-        var wh = all[k];
-        if (wh && wh[0] > 0 && wh[1] > 0) shape(from + k, wh[1] / wh[0]);
-      }
-    }, function () {});
+    var asks = [];
+    for (var i = from; i <= to; i++) (function (virtual) {
+      if (splitWide) return;
+      var physical = virtual;
+      asks.push(fetch("/render/sizes?from=" + (physical + 1) + "&to=" + (physical + 1)).then(function (r) {
+        return r.ok ? r.json() : null;
+      }).then(function (said) {
+        var wh = said && said.sizes && said.sizes[0];
+        if (wh && wh[0] > 0 && wh[1] > 0 && jump === jumps) shape(virtual, wh[1] / wh[0] * (splitWide ? 2 : 1));
+      }, function () {}));
+    })(i);
+    return Promise.all(asks);
   }
 
   /*
@@ -493,27 +510,65 @@
       return;
     }
     total = doc.pages;
-    if (doc.width > 0 && doc.height > 0) {
-      ratio0 = Math.min(MAX_RATIO, Math.max(MIN_RATIO, doc.height / doc.width));
+    splitWide = vwParams.get("splitwide") === "1";
+    var prepare = Promise.resolve();
+    if (splitWide) {
+      var batches = [];
+      for (var from = 1; from <= total; from += 16) {
+        (function (a, b) {
+          batches.push(fetch("/render/sizes?from=" + a + "&to=" + b).then(function (r) {
+            return r.ok ? r.json() : null;
+          }).then(function (said) { return said && said.sizes || []; }, function () { return []; }));
+        })(from, Math.min(total, from + 15));
+      }
+      prepare = Promise.all(batches).then(function (allBatches) {
+        var all = [];
+        for (var b = 0; b < allBatches.length; b++) all = all.concat(allBatches[b]);
+        virtualPages = [];
+        for (var p = 0; p < total; p++) {
+          var wh = all[p] || (p === 0 ? [doc.width, doc.height] : null);
+          var w = wh && wh[0] > 0 ? wh[0] : doc.width;
+          var h = wh && wh[1] > 0 ? wh[1] : doc.height;
+          var wide = w > h * 1.15;
+          var r = h / w * (wide ? 2 : 1);
+          if (wide) {
+            virtualPages.push({ physical: p, half: 0, ratio: r });
+            virtualPages.push({ physical: p, half: 1, ratio: r });
+          } else {
+            virtualPages.push({ physical: p, half: null, ratio: r });
+          }
+        }
+      });
     }
-    sized[0] = true;
-    count = Math.max(1, Math.min(total, Math.floor(MAX_COLUMN / (PAGE_WIDTH * ratio0 + GAP))));
-    pages.appendChild(above);
-    pages.appendChild(below);
-    if (count < total) {
-      var cut = document.createElement("div");
-      cut.className = "vw-cut";
-      cut.textContent =
-        "The simple view shows the first " + count + " of this PDF's " + total + " pages.";
-      pages.appendChild(cut);
-    }
-    /* A reopened document goes straight to its page, which is then the first one drawn. Checked
-       against the document rather than trusted, as a "g" command is. */
-    var resumeAt = Math.floor(Number(vwParams.get("resume")));
-    var start = resumeAt >= 2 && resumeAt <= count ? place(resumeAt - 1) : Promise.resolve();
-    return start.then(function () {
-      update();
-      reportPage();
+    return prepare.then(function () {
+      var logicalTotal = splitWide ? virtualPages.length : total;
+      if (splitWide && virtualPages.length) ratio0 = virtualPages[0].ratio;
+      else if (doc.width > 0 && doc.height > 0) ratio0 = doc.height / doc.width;
+      ratio0 = Math.min(MAX_RATIO, Math.max(MIN_RATIO, ratio0));
+      sized[0] = true;
+      count = Math.max(1, Math.min(logicalTotal, Math.floor(MAX_COLUMN / (PAGE_WIDTH * ratio0 + GAP))));
+      if (splitWide) {
+        for (var i = 0; i < count; i++) {
+          sized[i] = true;
+          shape(i, virtualPages[i].ratio);
+        }
+      }
+      pages.appendChild(above);
+      pages.appendChild(below);
+      if (count < logicalTotal) {
+        var cut = document.createElement("div");
+        cut.className = "vw-cut";
+        cut.textContent = "The simple view shows the first " + count + " pages of this PDF.";
+        pages.appendChild(cut);
+      }
+      var resumeAt = Math.floor(Number(vwParams.get("resume")));
+      if (splitWide && resumeAt >= 1 && resumeAt <= total) {
+        for (var j = 0; j < virtualPages.length; j++) {
+          if (virtualPages[j].physical + 1 >= resumeAt) { resumeAt = j + 1; break; }
+        }
+      }
+      var start = resumeAt >= 2 && resumeAt <= count ? place(resumeAt - 1) : Promise.resolve();
+      return start.then(function () { update(); reportPage(); });
     });
   }
 

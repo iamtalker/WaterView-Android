@@ -6,8 +6,10 @@
     <string name="manga_direction_title">읽는 방향</string>
     <string name="manga_direction_left_to_right">왼쪽에서 오른쪽</string>
     <string name="manga_direction_japanese">일본 만화 · 오른쪽에서 왼쪽</string>
+    <string name="split_wide_pages">가로로 긴 그림을 반으로 나눠 보기</string>
     <string name="pdf_settings">PDF 보기</string>
     <string name="pdf_horizontal_pages">좌우로 페이지 넘기기</string>
+    <string name="pdf_split_wide_pages">가로로 긴 PDF 페이지를 반으로 나눠 보기</string>
     <string name="cancel">취소</string>
     <string name="previous_page">이전 페이지</string>
     <string name="next_page">다음 페이지</string>

@@ -38,9 +38,18 @@ class SettingsActivity : AppCompatActivity() {
         }
         refreshDirection()
 
+        findViewById<MaterialSwitch>(R.id.splitWidePagesSwitch).apply {
+            isChecked = Settings.splitWidePages(this@SettingsActivity)
+            setOnCheckedChangeListener { _, checked -> Settings.setSplitWidePages(this@SettingsActivity, checked) }
+        }
+
         findViewById<MaterialSwitch>(R.id.pdfHorizontalSwitch).apply {
             isChecked = Settings.pdfHorizontalPages(this@SettingsActivity)
             setOnCheckedChangeListener { _, checked -> Settings.setPdfHorizontalPages(this@SettingsActivity, checked) }
+        }
+        findViewById<MaterialSwitch>(R.id.pdfSplitWidePagesSwitch).apply {
+            isChecked = Settings.pdfSplitWidePages(this@SettingsActivity)
+            setOnCheckedChangeListener { _, checked -> Settings.setPdfSplitWidePages(this@SettingsActivity, checked) }
         }
     }
 }
