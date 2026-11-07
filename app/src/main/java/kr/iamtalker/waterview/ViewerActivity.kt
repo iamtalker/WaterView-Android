@@ -1079,6 +1079,11 @@ open class ViewerActivity : AppCompatActivity() {
             tellPage(PortCommand.goToPage((pageAt + if (forward) 1 else -1).coerceIn(1, pageTotal)))
             return
         }
+        // Sideways reading turns a screen's width of columns at a time
+        if (kind == FileKind.TEXT && Settings.pdfHorizontalPages(this)) {
+            web.scrollBy(if (forward) web.width else -web.width, 0)
+            return
+        }
         val distance = (web.height * 0.82f).toInt().coerceAtLeast(1)
         web.scrollBy(0, if (forward) distance else -distance)
     }
@@ -2329,6 +2334,7 @@ open class ViewerActivity : AppCompatActivity() {
                     (placeAt?.let { "&at=${it.chapter}.${it.past}" } ?: "") +
                     (markAt?.let { "&mark=$it" } ?: "") +
                     (if (kind == FileKind.TEXT && Settings.textReflow(this)) "&reflow=1" else "") +
+                    (if (kind == FileKind.TEXT && Settings.pdfHorizontalPages(this)) "&hor=1" else "") +
                     // The zoom the phone itself asks for, which a book's page keeps its
                     // own words at whatever size the reader gives the book's, and a sheet
                     // opens zoomed to

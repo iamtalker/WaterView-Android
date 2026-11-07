@@ -332,8 +332,11 @@ function vwFetchDoc(kind) {
 /* Anything can be asked for as text, including a multi-gigabyte binary, so the
    text viewer reads a page at a time and lets the reader ask for the next one
    rather than committing the whole file to the DOM up front. */
-var VW_TEXT_FIRST_PAGE = 512 * 1024;
-var VW_TEXT_PAGE = 5 * 1024 * 1024;
+/* Sideways text lays out its columns for everything on the page, so it reads a smaller first piece
+   and the rest as the reader turns towards it (see text.js). */
+var VW_HOR_TEXT = vwParams.get("hor") === "1";
+var VW_TEXT_FIRST_PAGE = VW_HOR_TEXT ? 64 * 1024 : 512 * 1024;
+var VW_TEXT_PAGE = VW_HOR_TEXT ? 256 * 1024 : 5 * 1024 * 1024;
 
 /* Encoding of a file from its byte order mark, if it has one. The decoder
    strips the mark itself. */

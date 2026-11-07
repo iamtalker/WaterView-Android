@@ -94,9 +94,27 @@ function topPad() {
   return (parseFloat(getComputedStyle(document.body).paddingTop) || 0) + 6;
 }
 
-/* The character at the top of the screen, or null when none is there to be found */
+/* Read from the URL: pages turn sideways, as columns, when the reader chose a sideways reading */
+var hor = vwParams.get("hor") === "1";
+if (hor) {
+  document.documentElement.classList.add("vw-hor");
+  // The first column starts at the left edge, whatever the page did to the scroll on the way up
+  addEventListener("load", function () { scrollTo(0, 0); });
+  // Sideways, the rest of the text is read as the reader gets near its end, a piece at a time
+  var loadingMore = false;
+  addEventListener("scroll", function () {
+    if (finished || loadingMore || doc === null) return;
+    if (scrollX + innerWidth * 3 < document.documentElement.scrollWidth) return;
+    loadingMore = true;
+    showPage().catch(function () {}).then(function () { loadingMore = false; });
+  }, { passive: true });
+}
+
+/* The character at the top of the screen, or null when none is there to be found. Sideways, that is
+   the column at the left edge. */
 function topChar() {
-  var pos = document.caretRangeFromPoint ? document.caretRangeFromPoint(innerWidth / 2, topPad()) : null;
+  var x = hor ? 16 : innerWidth / 2;
+  var pos = document.caretRangeFromPoint ? document.caretRangeFromPoint(x, topPad()) : null;
   if (!pos) return null;
   var at = charsBefore(pos.startContainer, pos.startOffset);
   return at < 0 ? null : at;
@@ -135,8 +153,9 @@ var reportTries = 0;
 /* How far down the text the screen is, in thousandths, for the app's scroll bar */
 var lastFraction = -1;
 function reportFraction() {
-  var room = document.documentElement.scrollHeight - innerHeight;
-  var n = room > 0 ? Math.round(pageYOffset * 1000 / room) : 0;
+  var room = hor ? document.documentElement.scrollWidth - innerWidth : document.documentElement.scrollHeight - innerHeight;
+  var at = hor ? pageXOffset : pageYOffset;
+  var n = room > 0 ? Math.round(at * 1000 / room) : 0;
   n = Math.max(0, Math.min(1000, n));
   if (n === lastFraction) return;
   if (vwFind.post("sc " + n)) lastFraction = n;
@@ -149,8 +168,9 @@ function scrollToFraction(n) {
   if (!finished && doc && n >= 990) {
     return showPage().then(function () { return scrollToFraction(n); });
   }
-  var room = document.documentElement.scrollHeight - innerHeight;
-  scrollTo(0, room > 0 ? room * n / 1000 : 0);
+  var room = hor ? document.documentElement.scrollWidth - innerWidth : document.documentElement.scrollHeight - innerHeight;
+  if (hor) scrollTo(room > 0 ? room * n / 1000 : 0, 0);
+  else scrollTo(0, room > 0 ? room * n / 1000 : 0);
   reportTop();
   reportFraction();
   return Promise.resolve();
@@ -188,7 +208,13 @@ function goToChar(target) {
   range.collapse(true);
   var rects = range.getClientRects();
   var top = rects.length ? rects[0].top : node.parentNode.getBoundingClientRect().top;
-  scrollTo(0, pageYOffset + top - topPad());
+  if (hor) {
+    // Sideways, the screen moves in whole screens so the place's column starts at the left edge
+    var left = rects.length ? rects[0].left : node.parentNode.getBoundingClientRect().left;
+    scrollTo(Math.max(0, Math.floor((pageXOffset + left) / innerWidth) * innerWidth), 0);
+  } else {
+    scrollTo(0, pageYOffset + top - topPad());
+  }
   reportTop();
   return Promise.resolve();
 }

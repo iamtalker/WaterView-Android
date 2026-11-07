@@ -40,6 +40,21 @@
   }
   .more button:active { background: #f7e4e0; }
   .more button[disabled] { opacity: 0.5; }
+  /* Sideways reading: the text runs down columns one screen wide, and the screen scrolls across them */
+  html.vw-hor { overflow-x: auto; overflow-y: hidden; }
+  html.vw-hor body { overflow: visible; height: 100vh; margin: 0; padding: 0; box-sizing: border-box; position: relative; }
+  html.vw-hor pre {
+    position: absolute;
+    top: var(--vw-top, 0px);
+    left: 0;
+    margin: 0;
+    box-sizing: border-box;
+    height: calc(100vh - var(--vw-top, 0px));
+    column-width: calc(100vw - 28px);
+    column-gap: 28px;
+    column-fill: auto;
+    overflow: visible;
+  }
   /* The app's own night mode, from the settings: the text on a dark ground */
   html.vw-night body { background: #121212; }
   html.vw-night pre { color: #e0e0e0; }
