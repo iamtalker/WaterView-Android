@@ -157,6 +157,8 @@
     <string name="book_position_spoken">책의 %1$d%% 지점</string>
     <string name="contents">목차</string>
     <string name="text_size">글자 크기</string>
+    <string name="pdf_zoom">PDF 페이지 확대</string>
+    <string name="pdf_zoom_spoken">PDF 페이지 확대 %1$d%%</string>
     <!-- The two buttons show a small and a large letter. A screen reader says these. -->
     <string name="text_smaller">글자 작게</string>
     <string name="text_larger">글자 크게</string>

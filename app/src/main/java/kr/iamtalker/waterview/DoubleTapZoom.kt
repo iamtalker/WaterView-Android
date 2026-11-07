@@ -30,8 +30,8 @@ internal const val DOUBLE_TAP_MS = 250
  * The line between them is half way by ratio, so every double tap changes the size by at least
  * as much as that, wherever a pinch left it.
  */
-internal fun doubleTapTarget(zoom: Float): Float =
-    if (zoom < sqrt(DOUBLE_TAP_ZOOM)) DOUBLE_TAP_ZOOM else 1f
+internal fun doubleTapTarget(zoom: Float, baseZoom: Float = 1f): Float =
+    if (zoom < baseZoom * sqrt(DOUBLE_TAP_ZOOM)) baseZoom * DOUBLE_TAP_ZOOM else baseZoom
 
 /**
  * The scroll offset that keeps a place in the document under the finger at [at] px along the
@@ -67,7 +67,11 @@ internal interface ZoomSurface {
  * pages [FileKind.zoomedOnDoubleTap] names turn that one off with touch-action, and this is what
  * a double tap does instead.
  */
-internal class DoubleTapZoom(context: Context, private val surface: ZoomSurface) {
+internal class DoubleTapZoom(
+    context: Context,
+    private val surface: ZoomSurface,
+    private val baseZoom: Float = 1f,
+) {
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
     private var running: ValueAnimator? = null
     private var downX = 0f
@@ -121,7 +125,7 @@ internal class DoubleTapZoom(context: Context, private val surface: ZoomSurface)
     private fun zoomAbout(x: Float, y: Float) {
         if (leftToPage) return
         val from = zoom() ?: return
-        val to = doubleTapTarget(from)
+        val to = doubleTapTarget(from, baseZoom)
         val began = ZoomStart(surface)
         cancel()
         running = ValueAnimator.ofFloat(0f, 1f).apply {

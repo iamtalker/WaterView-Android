@@ -275,10 +275,18 @@ open class ViewerActivity : AppCompatActivity() {
         findViewById<View>(R.id.bottomNext).setOnClickListener { turnPage(forward = true, pageButton = true) }
         findViewById<SeekBar>(R.id.pdfPageSeek).setOnSeekBarChangeListener(
             object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) = Unit
-                override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
+                override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                    if (fromUser && currentKind == FileKind.TEXT) {
+                        findViewById<TextView>(R.id.bottomPageCounter).text =
+                            getString(R.string.scroll_position, progress / 10)
+                    }
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar) {
+                    if (currentKind == FileKind.TEXT) seekingPosition = true
+                }
                 override fun onStopTrackingTouch(seekBar: SeekBar) {
                     if (currentKind == FileKind.TEXT) {
+                        seekingPosition = false
                         tellPage(PortCommand.scrollTo(seekBar.progress))
                     } else if (pageTotal > 1 && currentKind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE)) {
                         tellPage(PortCommand.goToPage((seekBar.progress + 1).coerceIn(1, pageTotal)))
@@ -528,6 +536,8 @@ open class ViewerActivity : AppCompatActivity() {
             setOnMenuItemClickListener { tellPage(PortCommand.contents()); true }
         }
         textSizeItem = toolbar.menu.findItem(R.id.action_text_size).apply {
+            title = getString(if (isPdf) R.string.pdf_zoom else R.string.text_size)
+            isVisible = isText
             setOnMenuItemClickListener { askForTextSize(); true }
         }
         setUpPrint(toolbar, kind, uri, name)
@@ -862,6 +872,10 @@ open class ViewerActivity : AppCompatActivity() {
 
     /** The text zoom the WebView came with, which is the phone's own font size setting. */
     private var phoneTextZoom = 100
+    private var pdfZoomReady = false
+    private var pdfZoomApplied = 100
+    private var textScrollReported = false
+    private var seekingPosition = false
 
     /**
      * Where a document's length and a PDF's page are looked up before the page loads, which
@@ -1060,16 +1074,21 @@ open class ViewerActivity : AppCompatActivity() {
 
     /** Where a text file's screen is, from the page, for its bar and its percentage. */
     private fun showTextScroll(thousandths: Int) {
+        textScrollReported = true
         val seek = findViewById<SeekBar>(R.id.pdfPageSeek) ?: return
         seek.visibility = View.VISIBLE
         seek.max = 1000
-        if (!dragging) seek.progress = thousandths
-        findViewById<TextView>(R.id.bottomPageCounter)?.text =
-            getString(R.string.scroll_position, thousandths / 10)
+        if (!dragging && !seekingPosition) seek.progress = thousandths
+        if (!seekingPosition) {
+            findViewById<TextView>(R.id.bottomPageCounter)?.text =
+                getString(R.string.scroll_position, thousandths / 10)
+        }
     }
 
     private fun updateBottomScroll(web: WebView) {
-        if (pageTotal > 0 || web.height <= 0) return
+        if (pageTotal > 0 || web.height <= 0 || seekingPosition ||
+            (currentKind == FileKind.TEXT && textScrollReported)
+        ) return
         val range = (web.contentHeight * web.resources.displayMetrics.density - web.height).coerceAtLeast(1f)
         val percent = (web.scrollY * 100f / range).toInt().coerceIn(0, 100)
         findViewById<TextView>(R.id.bottomPageCounter)?.text = getString(R.string.scroll_position, percent)
@@ -1183,47 +1202,58 @@ open class ViewerActivity : AppCompatActivity() {
         entry.setOnEditorActionListener { _, _, _ -> go(); true }
     }
 
-    /**
-     * Sets the size of a book's text by the WebView's own text zoom, which scales every letter
-     * and its line whatever unit the book gave the size in. A rule laid over the book's
-     * stylesheets would leave a book that sets its type in points where it was. The choice
-     * multiplies the zoom the WebView came with, so the phone's font size is where it starts.
-     *
-     * A page of a fixed size gets neither: it was drawn around its type at the size its book
-     * gave it, and larger letters run out of the boxes they were placed in.
-     */
+    /** Applies the saved WebView text scale to text files or reflowing books. */
     private fun applyTextSize() {
         val web = webView ?: return
-        web.settings.textZoom =
-            bookTextZoom(phoneTextZoom, Settings.bookTextSize(this), bookReflows)
+        val size = Settings.bookTextSize(this)
+        web.settings.textZoom = if (book) bookTextZoom(phoneTextZoom, size, bookReflows)
+        else phoneTextZoom * size / 100
+    }
+
+    /** Enlarges the whole fixed-layout PDF page; its words cannot be reflowed independently. */
+    private fun applyPdfZoom(percent: Int) {
+        val web = webView ?: return
+        if (!pdfZoomReady) return
+        val target = percent.coerceIn(Settings.PDF_ZOOM_SIZES.first(), Settings.PDF_ZOOM_SIZES.last())
+        val factor = target.toFloat() / pdfZoomApplied
+        if (factor != 1f && runCatching { web.zoomBy(factor) }.isFailure) return
+        pdfZoomApplied = target
     }
 
     /**
-     * A book's text size: a button either side of the size, each tap showing on the page at
-     * once. At the foot of the screen and with nothing dimmed, so the text being sized can be
-     * read above it. The same size for every book, since it is the reader's eyes that it
-     * suits and not the book. See [Settings.BOOK_TEXT_SIZES].
+     * TXT and book text size, or a PDF's whole-page zoom, changed live by the same controls.
      */
     private fun askForTextSize() {
+        val pdfZoom = currentKind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE)
         val themed = nightChrome.dialogs
         val row = LayoutInflater.from(themed).inflate(R.layout.dialog_text_size, null)
         val smaller = row.findViewById<View>(R.id.textSmaller)
         val larger = row.findViewById<View>(R.id.textLarger)
         val now = row.findViewById<TextView>(R.id.textSizeNow)
-        val sizes = Settings.BOOK_TEXT_SIZES
+        val sizes = if (pdfZoom) Settings.PDF_ZOOM_SIZES else Settings.BOOK_TEXT_SIZES
+
+        fun currentSize() = if (pdfZoom) Settings.pdfZoomPercent(this) else Settings.bookTextSize(this)
 
         fun show() {
-            val percent = Settings.bookTextSize(this)
+            val percent = currentSize()
             // Description before text, as the page readout does it
-            now.contentDescription = getString(R.string.text_size_spoken, percent)
+            now.contentDescription = getString(
+                if (pdfZoom) R.string.pdf_zoom_spoken else R.string.text_size_spoken,
+                percent
+            )
             now.text = getString(R.string.scroll_position, percent)
             smaller.isEnabled = percent > sizes.first()
             larger.isEnabled = percent < sizes.last()
         }
         fun step(by: Int) {
-            val to = sizes.getOrNull(sizes.indexOf(Settings.bookTextSize(this)) + by) ?: return
-            Settings.setBookTextSize(this, to)
-            applyTextSize()
+            val to = sizes.getOrNull(sizes.indexOf(currentSize()) + by) ?: return
+            if (pdfZoom) {
+                Settings.setPdfZoomPercent(this, to)
+                applyPdfZoom(to)
+            } else {
+                Settings.setBookTextSize(this, to)
+                applyTextSize()
+            }
             show()
         }
         smaller.setOnClickListener { step(-1) }
@@ -1231,7 +1261,7 @@ open class ViewerActivity : AppCompatActivity() {
         show()
 
         val dialog = DialogBuilder(themed)
-            .setTitle(R.string.text_size)
+            .setTitle(if (pdfZoom) R.string.pdf_zoom else R.string.text_size)
             .setView(row)
             .setPositiveButton(R.string.done, null)
             .create()
@@ -1698,7 +1728,12 @@ open class ViewerActivity : AppCompatActivity() {
                             if (pageTotal == 0) {
                                 goToPageItem?.isVisible = !book
                                 contentsItem?.isVisible = book
-                                textSizeItem?.isVisible = book
+                                textSizeItem?.isVisible = book ||
+                                    kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE
+                            }
+                            if (!pdfZoomReady && kind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE)) {
+                                pdfZoomReady = true
+                                applyPdfZoom(Settings.pdfZoomPercent(this@ViewerActivity))
                             }
                             pageAt = said.n
                             pageTotal = said.of
@@ -2076,6 +2111,10 @@ open class ViewerActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     private fun showWeb(container: FrameLayout, uri: Uri, kind: FileKind, name: String, ext: String) {
+        pdfZoomReady = false
+        pdfZoomApplied = 100
+        textScrollReported = false
+        seekingPosition = false
         if (kind == FileKind.TEXT) appliedTextHorizontal = Settings.textHorizontalPages(this)
         if (kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE) {
             appliedPdfSplitWide = Settings.pdfSplitWidePages(this)
@@ -2160,10 +2199,12 @@ open class ViewerActivity : AppCompatActivity() {
             if (kind == FileKind.XLSX) textZoom = 100
         }
         book = kind == FileKind.EPUB
-        if (book) {
+        if (book || kind == FileKind.TEXT) {
             applyTextSize()
-            // Its readout is no page number, so a tap on it has no page to ask for
-            pageIndicator.isClickable = false
+            if (book) {
+                // Its readout is no page number, so a tap on it has no page to ask for
+                pageIndicator.isClickable = false
+            }
         }
 
         // Cookies go for the same reason as DOM storage. Nothing here ever sets one, since
@@ -2238,7 +2279,13 @@ open class ViewerActivity : AppCompatActivity() {
                 .apply { float() }
         }
         // Only where the page turns the WebView's own double tap off, or both would zoom
-        doubleTapZoom = if (kind.zoomedOnDoubleTap) DoubleTapZoom(this, web) else null
+        doubleTapZoom = if (kind.zoomedOnDoubleTap) DoubleTapZoom(
+            this,
+            web,
+            baseZoom = if (kind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE)) {
+                Settings.pdfZoomPercent(this) / 100f
+            } else 1f,
+        ) else null
         // A tap on a picture hides the title bar and the phone's bars, and the next brings them
         // back, once no second tap has followed to make a double tap
         val pictureTaps = if (kind == FileKind.IMAGE_WEB) {

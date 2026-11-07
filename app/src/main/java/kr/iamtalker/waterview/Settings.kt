@@ -19,6 +19,7 @@ object Settings {
     private const val KEY_NIGHT = "night"
     private const val KEY_SORT_ORDER = "folder_sort_order"
     private const val KEY_BOOK_TEXT = "book_text_size"
+    private const val KEY_PDF_ZOOM = "pdf_zoom_percent"
     private const val KEY_MANGA_RTL = "manga_rtl"
     private const val KEY_SPLIT_WIDE_PAGES = "split_wide_pages"
     private const val KEY_PDF_HORIZONTAL = "pdf_horizontal_pages"
@@ -133,6 +134,19 @@ object Settings {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit { putInt(KEY_BOOK_TEXT, percent) }
     }
+
+    /** The whole-page zoom for PDFs; PDF text itself has fixed page layout. */
+    fun pdfZoomPercent(context: Context): Int {
+        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_PDF_ZOOM, 100)
+        return if (saved in PDF_ZOOM_SIZES) saved else 100
+    }
+
+    fun setPdfZoomPercent(context: Context, percent: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit { putInt(KEY_PDF_ZOOM, percent) }
+    }
+
+    val PDF_ZOOM_SIZES = intArrayOf(80, 90, 100, 115, 130, 150, 175, 200)
 
     fun sortOrder(context: Context): SortOrder {
         val name = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
