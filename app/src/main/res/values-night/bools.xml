@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Light icons, because the night surface is nearly black.
+<!-- Light icons, because the night surface is deep navy.
 
      This is a resource rather than an item in a values-night theme because a style
      redeclared under values-night replaces the day one outright instead of merging
@@ -8,5 +8,5 @@
      one qualified boolean.
 -->
 <resources>
-    <bool name="gander_light_status_bar">false</bool>
+    <bool name="waterview_light_status_bar">false</bool>
 </resources>

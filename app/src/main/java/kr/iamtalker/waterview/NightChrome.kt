@@ -177,7 +177,7 @@ internal class NightChrome(private val activity: AppCompatActivity) {
             arrayOf(intArrayOf(-android.R.attr.state_pressed, -android.R.attr.state_focused), intArrayOf()),
             intArrayOf(controlNormal, controlActivated)
         )
-        val lightStatusBar = context.resources.getBoolean(R.bool.gander_light_status_bar)
+        val lightStatusBar = context.resources.getBoolean(R.bool.waterview_light_status_bar)
     }
 }
 

@@ -13,44 +13,21 @@ import android.provider.DocumentsContract
  * first time one is edited.
  */
 
-/**
- * The badge for each file kind, named once.
- *
- * Four of these moved when the app adopted the brand's terracotta primary. PPT sat
- * about four degrees of hue from the new accent, so a PowerPoint tile and the app's
- * own accent would have read as one signal; it moved to 16 degrees off. The other
- * three moved because they were already failing WCAG AA against their own white
- * label, which is what Play's pre-launch accessibility scan looks for: DIR was the
- * worst thing in the app at 1.97:1, FILE at 3.35 and PPT at 3.92, against the 4.5
- * that 12sp bold needs. They now measure 4.90, 4.65 and 5.20.
- *
- * PDF moved too, from 4.98 to 6.54. It was already passing, and it sits close to the
- * accent, but Thumbs draws a real first page over it whenever it can, so the tile is
- * mostly a placeholder. Mostly: a document that will not render, an encrypted one
- * above all, falls back to this badge and keeps it.
- *
- * The rest are untouched. Every one of them clears AA and sits at least 82 degrees
- * of hue away from the accent.
- */
-internal val PDF_BADGE = "PDF" to 0xFFB3261E.toInt()
-internal val DOC_BADGE = "DOC" to 0xFF1565C0.toInt()
-internal val XLS_BADGE = "XLS" to 0xFF2E7D32.toInt()
-internal val PPT_BADGE = "PPT" to 0xFFB25000.toInt()
-internal val IMG_BADGE = "IMG" to 0xFF7B1FA2.toInt()
-internal val VID_BADGE = "VID" to 0xFFAD1457.toInt()
-internal val AUD_BADGE = "AUD" to 0xFF00838F.toInt()
-internal val MD_BADGE = "MD" to 0xFF455A64.toInt()
-internal val TXT_BADGE = "TXT" to 0xFF616161.toInt()
+/** WaterView's desktop blue family, kept cohesive across file-type badges. */
+internal val PDF_BADGE = "PDF" to 0xFF155A96.toInt()
+internal val DOC_BADGE = "DOC" to 0xFF1769A8.toInt()
+internal val XLS_BADGE = "XLS" to 0xFF285D7A.toInt()
+internal val PPT_BADGE = "PPT" to 0xFF315B88.toInt()
+internal val IMG_BADGE = "IMG" to 0xFF176D95.toInt()
+internal val VID_BADGE = "VID" to 0xFF285B8A.toInt()
+internal val AUD_BADGE = "AUD" to 0xFF176879.toInt()
+internal val MD_BADGE = "MD" to 0xFF455A73.toInt()
+internal val TXT_BADGE = "TXT" to 0xFF53647A.toInt()
 
-/**
- * A 3D model. Indigo, in the widest gap the palette leaves: 32 degrees of hue from DOC's
- * blue and 38 from IMG's purple, with the accent over a hundred away. 7.91:1 against its
- * white label.
- */
-internal val MODEL_BADGE = "3D" to 0xFF4338CA.toInt()
+internal val MODEL_BADGE = "3D" to 0xFF314A70.toInt()
 
 /** What an unsupported file falls back to. */
-internal val FILE_BADGE = "FILE" to 0xFF607884.toInt()
+internal val FILE_BADGE = "FILE" to 0xFF586B82.toInt()
 
 /**
  * The last tile of the welcome grid, standing for everything WaterView opens that has no tile of
@@ -84,28 +61,13 @@ internal val WELCOME_BADGES = listOf(
     AUD_BADGE, MD_BADGE, ETC_BADGE,
 )
 
-internal val DIR_COLOR = 0xFF8A6D1F.toInt()
+internal val DIR_COLOR = 0xFF315A89.toInt()
 
-/**
- * A .zip, in the folder colour, because that is what it behaves as: tapped, it opens as a
- * list to go into rather than as a document. Borrowing the colour also borrows its
- * measured 4.90:1 against the white label. Declared after DIR_COLOR on purpose, since
- * top-level properties are initialised in the order they are written.
- */
+/** A ZIP behaves as a folder in the browser. */
 internal val ZIP_BADGE = "ZIP" to DIR_COLOR
 
-/**
- * The brand accent, and the one badge that is an action rather than a file type.
- *
- * Fixed rather than ?attr/colorPrimary, which is what it looks like it should be.
- * Material inverts primary for dark mode, to #FFB39E, and the label on every
- * badge is a hardcoded white in row_item.xml: a white "+" on that measured
- * 1.72:1, worse than the amber DIR badge this release exists partly to fix.
- * Pinned to the light tone it stays 6.54:1 in both themes, and against the night
- * surface it sits at 2.83 against the DOC badge's 3.22, so it reads as a shape
- * exactly like its neighbours.
- */
-internal val ADD_COLOR = 0xFFAF2D18.toInt()
+/** The blue brand accent for the add-folder action. */
+internal val ADD_COLOR = 0xFF1976B9.toInt()
 
 /** The two or three letters, and the colour behind them, for a file. */
 internal fun badgeFor(name: String, mime: String?): Pair<String, Int> {

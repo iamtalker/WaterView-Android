@@ -365,7 +365,7 @@ class MainActivity : AppCompatActivity() {
             .setOnClickListener { openUrl(getString(R.string.url_source)) }
 
         val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.about_gander)
+            .setTitle(R.string.about_waterview)
             .setView(view)
             .setPositiveButton(R.string.about_close, null)
             .show()

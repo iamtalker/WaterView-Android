@@ -308,7 +308,7 @@ internal class ArchiveBrowser(
 
     private fun read(chosen: Charset?): Listing = try {
         val afd = activity.contentResolver.openAssetFileDescriptor(archive, "r")
-        val source = afd?.let(ZipSource::open)
+        val source = afd?.let { ZipSource.open(it, activity.cacheDir) }
         when {
             afd == null -> Listing.Failed(R.string.archive_unreadable)
             source == null -> {
@@ -322,6 +322,8 @@ internal class ArchiveBrowser(
         }
     } catch (_: ZipReader.TooLarge) {
         Listing.Failed(R.string.archive_too_large)
+    } catch (_: ZipSource.TooLargeToSpool) {
+        Listing.Failed(R.string.archive_spool_too_large)
     } catch (_: OutOfMemoryError) {
         // The count limit is generous, and a phone with a small heap can run out below it. This
         // is a background thread, where an error left to escape ends the app rather than the
@@ -401,10 +403,20 @@ internal class ArchiveBrowser(
     }
 
     private fun view(entry: ArchiveEntry) {
+        val siblings = tree?.list(folder)?.second.orEmpty()
+        val imagePages = siblings.filter { page ->
+            val ext = page.name.substringAfterLast('.', "").lowercase()
+            FileKind.detect(ext, null) in setOf(FileKind.IMAGE, FileKind.IMAGE_WEB)
+        }
         activity.startActivity(
             Intent()
                 .setClassName(activity, ViewerActivity.INTERNAL_VIEWER)
                 .setData(ArchiveProvider.uriFor(activity, archive, entry))
+                .putStringArrayListExtra(
+                    ViewerActivity.EXTRA_ARCHIVE_PHOTOS,
+                    ArrayList(imagePages.map { ArchiveProvider.uriFor(activity, archive, it).toString() })
+                        .takeIf { imagePages.size > 1 && imagePages.any { page -> page.location == entry.location } }
+                )
         )
     }
 
@@ -415,7 +427,7 @@ internal class ArchiveBrowser(
         loader.execute {
             val result = try {
                 val afd = activity.contentResolver.openAssetFileDescriptor(archive, "r")
-                val source = afd?.let(ZipSource::open)
+                val source = afd?.let { ZipSource.open(it, activity.cacheDir) }
                 if (source == null) {
                     afd?.close()
                     Unlock.FAILED

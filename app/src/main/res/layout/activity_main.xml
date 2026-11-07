@@ -52,16 +52,18 @@
                     android:importantForAccessibility="no"
                     android:src="@mipmap/ic_launcher" />
 
-                <!-- Filled white in the drawable and tinted here, because a ?attr colour
-                     resolved inside vector XML depends on the inflation path. -->
-                <ImageView
+                <!-- The WaterView label sits beside the same drop used by the app icon. -->
+                <TextView
                     android:id="@+id/wordmark"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="9dp"
-                    android:contentDescription="@string/app_name"
-                    android:src="@drawable/ic_wordmark"
-                    app:tint="?attr/colorOnSurface" />
+                    android:fontFamily="sans-serif"
+                    android:includeFontPadding="false"
+                    android:text="@string/app_name"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="24sp"
+                    android:textStyle="bold" />
             </LinearLayout>
         </FrameLayout>
 

@@ -162,7 +162,7 @@ class ArchiveProvider : ContentProvider() {
         } ?: throw FileNotFoundException("the archive could not be opened")
         var handedOver = false
         try {
-            val source = ZipSource.open(archive)
+            val source = ZipSource.open(archive, requireNotNull(context).cacheDir)
                 ?: throw FileNotFoundException("the archive cannot be read in place")
             val at = ref.location
             val start = ZipReader.dataStart(source, at)

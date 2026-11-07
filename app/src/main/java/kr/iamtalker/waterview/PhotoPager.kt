@@ -23,6 +23,7 @@ internal class PhotoPager(
     private val opened: Uri,
     first: ChildDoc,
     private val host: Host,
+    private val uriOverride: ((ChildDoc) -> Uri)? = null,
 ) {
 
     /** What the viewer does for the pages. */
@@ -121,7 +122,8 @@ internal class PhotoPager(
         return true
     }
 
-    private fun uriOf(photo: ChildDoc): Uri = DocumentsContract.buildDocumentUriUsingTree(opened, photo.docId)
+    private fun uriOf(photo: ChildDoc): Uri = uriOverride?.invoke(photo)
+        ?: DocumentsContract.buildDocumentUriUsingTree(opened, photo.docId)
 
     private fun announce(position: Int) {
         val photo = photos.getOrNull(position) ?: return

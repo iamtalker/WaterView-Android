@@ -76,6 +76,7 @@ open class ViewerActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_PATH = "path"
+        const val EXTRA_ARCHIVE_PHOTOS = "kr.iamtalker.waterview.ARCHIVE_PHOTOS"
 
         /**
          * The one part of the cache WaterView's FileProvider covers: the files of its own the viewer
@@ -289,8 +290,11 @@ open class ViewerActivity : AppCompatActivity() {
             return
         }
         // A photo swiped to in a folder's photos is the one to show again, not the one opened
+        val archivePhotoUris = intent.getStringArrayListExtra(EXTRA_ARCHIVE_PHOTOS)
+            ?.map(Uri::parse).orEmpty()
         val swipedTo = savedInstanceState?.getString(STATE_PHOTO)?.toUri()
-            ?.takeIf { fromWaterView && handed != null && inSameTree(it, handed) }
+            ?.takeIf { fromWaterView && handed != null &&
+                (inSameTree(it, handed) || archivePhotoUris.any { page -> page == it }) }
         // The shared-text file is written here, from text the sender handed over, so it
         // is WaterView's own URI but never one another app chose.
         val uri = swipedTo ?: handed ?: sharedTextUri()
@@ -324,6 +328,8 @@ open class ViewerActivity : AppCompatActivity() {
                 FileKind.IMAGE, FileKind.IMAGE_WEB -> {
                     floatOverPicture()
                     when {
+                        fromWaterView && archivePhotoUris.size > 1 ->
+                            showArchivePhotos(container, uri, archivePhotoUris)
                         fromWaterView && DocumentsContract.isTreeUri(uri) -> showPhotos(container, uri, name, mime)
                         kind == FileKind.IMAGE -> showPicture(container, uri, name, ext)
                         else -> showWeb(container, uri, kind, name, ext)
@@ -1764,6 +1770,24 @@ open class ViewerActivity : AppCompatActivity() {
                 findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_delete).isVisible = mayTrash(pager.shown)
             }
         }) { app -> photosAround(app.contentResolver, uri, Settings.sortOrder(app)) }
+    }
+
+    /** Pages in the same folder of a ZIP are a comic, with the usual swipe reader. */
+    private fun showArchivePhotos(container: FrameLayout, opened: Uri, pages: List<Uri>) {
+        val docs = pages.map { uri ->
+            val name = uri.lastPathSegment.orEmpty()
+            ChildDoc(uri.toString(), name, contentResolver.getType(uri).orEmpty(), 0, 0)
+        }
+        val at = pages.indexOf(opened).takeIf { it >= 0 } ?: 0
+        val first = docs[at]
+        val pager = PhotoPager(this, opened, first, photoHost) { Uri.parse(it.docId) }
+        photoPager = pager
+        photosListed = true
+        countsPhotos = true
+        pageIndicator.isClickable = false
+        findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_delete).isVisible = false
+        container.addView(pager.view, matchParent())
+        pager.fill(docs, at)
     }
 
     private val photoHost = object : PhotoPager.Host {

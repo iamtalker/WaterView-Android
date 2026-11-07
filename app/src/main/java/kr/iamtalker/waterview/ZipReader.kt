@@ -3,7 +3,9 @@ package kr.iamtalker.waterview
 import android.content.res.AssetFileDescriptor
 import java.io.Closeable
 import java.io.EOFException
+import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
@@ -169,21 +171,72 @@ internal class ZipSource(
 
     override fun close() = owner.close()
 
+    /** The non-seekable archive is too large to spool into the app's cache. */
+    class TooLargeToSpool : ZipException("archive is too large to cache")
+
     companion object {
         /**
-         * Over whatever a provider handed back, or null when it cannot be read out of order.
-         * That is a pipe: a provider streaming the file to us rather than handing over a
-         * descriptor onto it, which some cloud and messaging apps do. Stat says so up front,
-         * with no size.
+         * Over whatever a provider handed back. A descriptor with a stat size is read in place;
+         * a pipe or provider that cannot report one is copied to a bounded cache file so the
+         * central directory at the end can still be read. Closing the source removes that copy.
          */
-        fun open(afd: AssetFileDescriptor): ZipSource? {
-            if (afd.parcelFileDescriptor.statSize < 0) return null
-            // Not closed here: the descriptor belongs to afd, which the source closes
-            val channel = FileInputStream(afd.fileDescriptor).channel
-            val size = runCatching { channel.size() }.getOrNull() ?: return null
-            val length =
-                if (afd.declaredLength >= 0) afd.declaredLength else size - afd.startOffset
-            return ZipSource(channel, afd.startOffset, maxOf(length, 0L), afd)
+        fun open(afd: AssetFileDescriptor, cacheDir: File): ZipSource? {
+            if (afd.parcelFileDescriptor.statSize >= 0) {
+                // Not closed here: the descriptor belongs to afd, which the source closes.
+                val channel = FileInputStream(afd.fileDescriptor).channel
+                val size = runCatching { channel.size() }.getOrNull()
+                if (size != null) {
+                    val length =
+                        if (afd.declaredLength >= 0) afd.declaredLength else size - afd.startOffset
+                    return ZipSource(channel, afd.startOffset, maxOf(length, 0L), afd)
+                }
+                runCatching { channel.close() }
+                return null
+            }
+
+            val temp = File.createTempFile("waterview-zip-", ".tmp", cacheDir)
+            try {
+                val input = afd.createInputStream()
+                FileOutputStream(temp).use { output ->
+                    input.use { from ->
+                        val buffer = ByteArray(64 * 1024)
+                        var copied = 0L
+                        while (true) {
+                            val count = from.read(buffer)
+                            if (count < 0) break
+                            copied += count
+                            if (copied > MAX_SPOOLED_BYTES) throw TooLargeToSpool()
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                }
+                val channel = FileInputStream(temp).channel
+                return ZipSource(channel, 0, temp.length(), SpoolOwner(afd, temp, channel))
+            } catch (failure: Throwable) {
+                runCatching { afd.close() }
+                temp.delete()
+                throw failure
+            }
+        }
+
+        private const val MAX_SPOOLED_BYTES = 512L * 1024 * 1024
+
+        private class SpoolOwner(
+            private val afd: AssetFileDescriptor,
+            private val file: File,
+            private val channel: java.nio.channels.FileChannel,
+        ) : Closeable {
+            override fun close() {
+                try {
+                    channel.close()
+                } finally {
+                    try {
+                        afd.close()
+                    } finally {
+                        file.delete()
+                    }
+                }
+            }
         }
     }
 }

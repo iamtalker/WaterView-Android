@@ -23,12 +23,11 @@ function showPage() {
     var text = page.text;
 
     /* A .json file is more often than not written with no spacing at all, and
-       arrives as one unbroken line. Lay it out, but only when it opens, and
-       only up to the size worth drawing: a file that fits VW_JSON_MAX arrived
-       whole, while a later page can be small enough to parse on its own and
-       would leave the reader a document half laid out and half not. Anything
-       that does not parse is shown as it is. */
-    if (firstPage && text.length <= VW_JSON_MAX && vwExt === "json") {
+       arrives as one unbroken line. Lay it out only when the entire file arrived
+       in the first page and is small enough to draw; formatting one chunk would
+       leave the reader a document half laid out and half not. Anything larger
+       or invalid is shown as it is. */
+    if (firstPage && page.done && text.length <= VW_JSON_MAX && vwExt === "json") {
       var laid = vwFormatJson(text);
       if (laid !== null) text = laid;
     }

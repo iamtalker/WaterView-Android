@@ -325,6 +325,7 @@ function vwFetchDoc(kind) {
 /* Anything can be asked for as text, including a multi-gigabyte binary, so the
    text viewer reads a page at a time and lets the reader ask for the next one
    rather than committing the whole file to the DOM up front. */
+var VW_TEXT_FIRST_PAGE = 512 * 1024;
 var VW_TEXT_PAGE = 5 * 1024 * 1024;
 
 /* Encoding of a file from its byte order mark, if it has one. The decoder
@@ -358,8 +359,24 @@ function vwOpenTextPages() {
     // by a page boundary still comes out whole. Decoding stays lenient, so an
     // unfamiliar encoding degrades to replacement characters rather than an error
     var decoder = null;
+    var first = true;
     function decode(bytes, last) {
-      if (!decoder) decoder = new TextDecoder(vwEncodingOf(bytes));
+      if (!decoder) {
+        var encoding = vwEncodingOf(bytes);
+        if (encoding === "utf-8") {
+          // Many Korean text files still use CP949 without a BOM. Prefer valid
+          // UTF-8, and fall back only when the byte stream proves it is invalid.
+          decoder = new TextDecoder("utf-8", { fatal: true });
+          try {
+            var text = decoder.decode(bytes, { stream: !last });
+            return { text: text, bytes: bytes.length, done: last };
+          } catch (e) {
+            decoder = new TextDecoder("euc-kr");
+          }
+        } else {
+          decoder = new TextDecoder(encoding);
+        }
+      }
       return { text: decoder.decode(bytes, { stream: !last }), bytes: bytes.length, done: last };
     }
 
@@ -370,7 +387,9 @@ function vwOpenTextPages() {
         var off = 0;
         return {
           next: function () {
-            var end = Math.min(off + VW_TEXT_PAGE, all.length);
+            var pageSize = first ? VW_TEXT_FIRST_PAGE : VW_TEXT_PAGE;
+            first = false;
+            var end = Math.min(off + pageSize, all.length);
             var page = all.subarray(off, end);
             off = end;
             return Promise.resolve(decode(page, off >= all.length));
@@ -386,11 +405,13 @@ function vwOpenTextPages() {
 
     return {
       next: function () {
+        var pageSize = first ? VW_TEXT_FIRST_PAGE : VW_TEXT_PAGE;
+        first = false;
         // Overshoot the page by a chunk rather than stopping level with it, so
         // a file that ends exactly on the boundary is known to be finished and
         // does not offer an empty page
         function pump() {
-          if (ended || held > VW_TEXT_PAGE) return Promise.resolve();
+          if (ended || held > pageSize) return Promise.resolve();
           return reader.read().then(function (res) {
             if (res.done) { ended = true; return; }
             pending.push(res.value);
@@ -399,7 +420,7 @@ function vwOpenTextPages() {
           });
         }
         return pump().then(function () {
-          var take = Math.min(held, VW_TEXT_PAGE);
+          var take = Math.min(held, pageSize);
           var page = new Uint8Array(take);
           var off = 0;
           while (off < take) {

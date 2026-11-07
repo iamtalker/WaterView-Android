@@ -13,8 +13,8 @@ android {
         applicationId = "kr.iamtalker.waterview"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.2.0"
+        versionCode = 4
+        versionName = "0.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // A device test that hangs blocks the whole nightly run behind it, and

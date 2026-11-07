@@ -17,7 +17,7 @@ Gander 기반 전환으로 이미지 확대, PDF 렌더링, ZIP 내부 보기, �
 
 ## 업데이트
 
-첫 배포부터 GitHub 최신 릴리즈를 앱 안에서 확인합니다. 새 APK가 있으면 앱에서 다운로드하고 Android 설치 확인 화면을 엽니다. 저장소는 `iamtalker/WaterView-Android`입니다.
+최신 APK는 [GitHub Releases](https://github.com/iamtalker/WaterView-Android/releases)에서 받습니다. 앱 메뉴의 **Check for updates**에서도 새 릴리즈를 확인하고 Android 설치 확인 화면을 열 수 있습니다. 저장소는 `iamtalker/WaterView-Android`입니다.
 
 ## 빌드
 

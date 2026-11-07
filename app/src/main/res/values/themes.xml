@@ -1,62 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!--
-         Every role, not one.
-
-         Setting colorPrimary alone left the other thirty-four resolving to Material's
-         baseline theme, which is purple, so the FAB, the surfaces and every container
-         role were a colour that appears nowhere else in this project. The names below
-         are defined twice, in values/colors.xml and values-night/colors.xml, so this
-         list is written once and night mode follows on its own.
-
-         windowBackground is here as well as colorBackground so the warm ground reaches
-         behind the list rather than showing through as the platform default.
-    -->
+    <!-- WaterView's blue identity, carried through every Material 3 role. -->
     <style name="Theme.WaterView" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/gander_primary</item>
-        <item name="colorOnPrimary">@color/gander_on_primary</item>
-        <item name="colorPrimaryContainer">@color/gander_primary_container</item>
-        <item name="colorOnPrimaryContainer">@color/gander_on_primary_container</item>
-        <item name="colorSecondary">@color/gander_secondary</item>
-        <item name="colorOnSecondary">@color/gander_on_secondary</item>
-        <item name="colorSecondaryContainer">@color/gander_secondary_container</item>
-        <item name="colorOnSecondaryContainer">@color/gander_on_secondary_container</item>
-        <item name="colorTertiary">@color/gander_tertiary</item>
-        <item name="colorOnTertiary">@color/gander_on_tertiary</item>
-        <item name="colorTertiaryContainer">@color/gander_tertiary_container</item>
-        <item name="colorOnTertiaryContainer">@color/gander_on_tertiary_container</item>
-        <item name="colorError">@color/gander_error</item>
-        <item name="colorOnError">@color/gander_on_error</item>
-        <item name="colorErrorContainer">@color/gander_error_container</item>
-        <item name="colorOnErrorContainer">@color/gander_on_error_container</item>
-        <item name="colorSurface">@color/gander_surface</item>
-        <item name="colorOnSurface">@color/gander_on_surface</item>
-        <item name="colorOnBackground">@color/gander_on_surface</item>
-        <item name="colorSurfaceVariant">@color/gander_surface_variant</item>
-        <item name="colorOnSurfaceVariant">@color/gander_on_surface_variant</item>
-        <item name="colorSurfaceContainerLowest">@color/gander_surface_container_lowest</item>
-        <item name="colorSurfaceContainerLow">@color/gander_surface_container_low</item>
-        <item name="colorSurfaceContainer">@color/gander_surface_container</item>
-        <item name="colorSurfaceContainerHigh">@color/gander_surface_container_high</item>
-        <item name="colorSurfaceContainerHighest">@color/gander_surface_container_highest</item>
-        <item name="colorSurfaceDim">@color/gander_surface_dim</item>
-        <item name="colorSurfaceBright">@color/gander_surface_bright</item>
-        <item name="colorOutline">@color/gander_outline</item>
-        <item name="colorOutlineVariant">@color/gander_outline_variant</item>
-        <item name="colorSurfaceInverse">@color/gander_inverse_surface</item>
-        <item name="colorOnSurfaceInverse">@color/gander_inverse_on_surface</item>
-        <item name="colorPrimaryInverse">@color/gander_inverse_primary</item>
-        <item name="android:colorBackground">@color/gander_surface</item>
-        <item name="android:windowBackground">@color/gander_surface</item>
-        <item name="android:textColorHighlight">@color/gander_text_highlight</item>
-        <item name="android:windowLightStatusBar">@bool/gander_light_status_bar</item>
-        <!-- The status bar itself, on Android 14 and older, where the app colours it. With
-             nothing named here the platform used colorPrimaryDark, which Material 3 sets to
-             colorPrimary: the brand red under the dark icons asked for above, and a pale pink
-             under white ones at night. From Android 15 the app is drawn beneath the bar, which
-             already shows the surface there, so this changes nothing on those phones. Seen in
-             a screenshot on #30. -->
-        <item name="android:statusBarColor">@color/gander_surface</item>
+        <item name="colorPrimary">@color/waterview_primary</item>
+        <item name="colorOnPrimary">@color/waterview_on_primary</item>
+        <item name="colorPrimaryContainer">@color/waterview_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/waterview_on_primary_container</item>
+        <item name="colorSecondary">@color/waterview_secondary</item>
+        <item name="colorOnSecondary">@color/waterview_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/waterview_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/waterview_on_secondary_container</item>
+        <item name="colorTertiary">@color/waterview_tertiary</item>
+        <item name="colorOnTertiary">@color/waterview_on_tertiary</item>
+        <item name="colorTertiaryContainer">@color/waterview_tertiary_container</item>
+        <item name="colorOnTertiaryContainer">@color/waterview_on_tertiary_container</item>
+        <item name="colorError">@color/waterview_error</item>
+        <item name="colorOnError">@color/waterview_on_error</item>
+        <item name="colorErrorContainer">@color/waterview_error_container</item>
+        <item name="colorOnErrorContainer">@color/waterview_on_error_container</item>
+        <item name="colorSurface">@color/waterview_surface</item>
+        <item name="colorOnSurface">@color/waterview_on_surface</item>
+        <item name="colorOnBackground">@color/waterview_on_surface</item>
+        <item name="colorSurfaceVariant">@color/waterview_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/waterview_on_surface_variant</item>
+        <item name="colorSurfaceContainerLowest">@color/waterview_surface_container_lowest</item>
+        <item name="colorSurfaceContainerLow">@color/waterview_surface_container_low</item>
+        <item name="colorSurfaceContainer">@color/waterview_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/waterview_surface_container_high</item>
+        <item name="colorSurfaceContainerHighest">@color/waterview_surface_container_highest</item>
+        <item name="colorSurfaceDim">@color/waterview_surface_dim</item>
+        <item name="colorSurfaceBright">@color/waterview_surface_bright</item>
+        <item name="colorOutline">@color/waterview_outline</item>
+        <item name="colorOutlineVariant">@color/waterview_outline_variant</item>
+        <item name="colorSurfaceInverse">@color/waterview_inverse_surface</item>
+        <item name="colorOnSurfaceInverse">@color/waterview_inverse_on_surface</item>
+        <item name="colorPrimaryInverse">@color/waterview_inverse_primary</item>
+        <item name="android:colorBackground">@color/waterview_surface</item>
+        <item name="android:windowBackground">@color/waterview_surface</item>
+        <item name="android:textColorHighlight">@color/waterview_text_highlight</item>
+        <item name="android:windowLightStatusBar">@bool/waterview_light_status_bar</item>
+        <!-- Keep the status bar on the same surface as the app, including on older Android. -->
+        <item name="android:statusBarColor">@color/waterview_surface</item>
     </style>
 
     <!-- The viewer's overflow menu in the app's night colours, on a phone set to light.
@@ -67,11 +51,11 @@
          rather than to a role: the light theme's inverse text is the grey its night theme uses,
          so that is what a phone set to dark shows. -->
     <style name="ThemeOverlay.WaterView.Menu.Night" parent="">
-        <item name="colorSurfaceContainer">@color/gander_night_surface_container</item>
-        <item name="colorOnSurface">@color/gander_night_on_surface</item>
-        <item name="colorOnSurfaceVariant">@color/gander_night_on_surface_variant</item>
-        <item name="colorPrimary">@color/gander_night_primary</item>
-        <item name="colorOnPrimary">@color/gander_night_on_primary</item>
+        <item name="colorSurfaceContainer">@color/waterview_night_surface_container</item>
+        <item name="colorOnSurface">@color/waterview_night_on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/waterview_night_on_surface_variant</item>
+        <item name="colorPrimary">@color/waterview_night_primary</item>
+        <item name="colorOnPrimary">@color/waterview_night_on_primary</item>
         <item name="android:textColorPrimary">?android:attr/textColorPrimaryInverse</item>
     </style>
 
