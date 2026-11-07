@@ -88,6 +88,9 @@
   var below = document.createElement("div");
 
   var night = vwParams.get("night") === "1";
+  var pageMode = vwParams.get("pageMode") === "1";
+  var currentPage = -1;
+  if (pageMode) document.documentElement.classList.add("vw-page-mode");
   if (night) document.documentElement.classList.add("vw-night");
 
   var inFlight = 0;
@@ -233,6 +236,17 @@
   /* The pages near the screen laid out, and their pictures asked for. */
   function update() {
     if (!count) return;
+    if (pageMode) {
+      if (currentPage < 0) currentPage = 0;
+      var f = Math.max(0, currentPage - KEEP_PAGES);
+      var l = Math.min(count - 1, currentPage + KEEP_PAGES);
+      if (!win.length || f !== first || l !== win[win.length - 1].n) lay(f, l);
+      for (var p = 0; p < win.length; p++) {
+        win[p].box.classList.toggle("vw-current", win[p].n === currentPage);
+      }
+      pump();
+      return;
+    }
     var seen = onScreen();
     var f = Math.max(0, seen[0] - KEEP_PAGES);
     var l = Math.min(count - 1, seen[1] + KEEP_PAGES);
@@ -251,6 +265,14 @@
    */
   function pump() {
     if (!count) return;
+    if (pageMode) {
+      var active = slotOf(currentPage);
+      if (active && needs(active)) request(active);
+      var before = slotOf(currentPage - 1), after = slotOf(currentPage + 1);
+      if (before && inFlight < MAX_IN_FLIGHT && needs(before)) request(before);
+      if (after && inFlight < MAX_IN_FLIGHT && needs(after)) request(after);
+      return;
+    }
     var seen = onScreen();
     var a = seen[0] - DRAW_PAGES, b = seen[1] + DRAW_PAGES;
     var v = view();
@@ -369,7 +391,7 @@
     var v = view();
     if (!v.height) return;
     if (askedFor && Math.abs(v.top - askedFor.top) > 1) askedFor = null;
-    var n = askedFor ? askedFor.n : pageOnScreen(v);
+    var n = pageMode ? currentPage + 1 : askedFor ? askedFor.n : pageOnScreen(v);
     if (n === lastPageSent) return;
     lastPageSent = n;
     port.postMessage("page " + n + " " + count);
@@ -424,6 +446,16 @@
       if (jump !== jumps) return;
       lay(Math.max(0, i - KEEP_PAGES), Math.min(count - 1, i + KEEP_PAGES));
       var s = slotOf(i);
+      if (pageMode) {
+        currentPage = i;
+        for (var p = 0; p < win.length; p++) {
+          win[p].box.classList.toggle("vw-current", win[p].n === currentPage);
+        }
+        window.scrollTo(0, 0);
+        askedFor = { n: i + 1, top: view().top };
+        update();
+        return;
+      }
       var shortPage = heightOf(i) <= view().height / 2;
       if (PADDED) {
         s.box.scrollIntoView({ block: shortPage ? "center" : "start" });

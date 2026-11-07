@@ -122,6 +122,19 @@
     margin-bottom: calc(var(--pg-gap) * var(--vw-shrink));
   }
 
+  /* Page-turn mode keeps one fitted PDF sheet in the viewport. */
+  html.vw-page-mode, html.vw-page-mode body { height: 100%; overflow: hidden; }
+  html.vw-page-mode #pages {
+    position: relative; display: block; box-sizing: border-box;
+    height: calc(100vh - var(--vw-top, 0px)); min-height: 0;
+    padding: 0; overflow: hidden;
+  }
+  html.vw-page-mode #pages > .pg { display: none !important; }
+  html.vw-page-mode #pages > .pg.vw-current {
+    display: block !important; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%); margin: 0;
+  }
+
   /* While the fingers move the column is scaled as a picture, and laid out at the new
      width once they lift: see settle() in pdf.mjs. */
   #pages.vw-moving { will-change: transform; }

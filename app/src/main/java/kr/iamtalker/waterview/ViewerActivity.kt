@@ -42,6 +42,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -271,6 +272,17 @@ open class ViewerActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.bottomPrev).setOnClickListener { turnPage(forward = false, pageButton = true) }
         findViewById<View>(R.id.bottomNext).setOnClickListener { turnPage(forward = true, pageButton = true) }
+        findViewById<SeekBar>(R.id.pdfPageSeek).setOnSeekBarChangeListener(
+            object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) = Unit
+                override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
+                override fun onStopTrackingTouch(seekBar: SeekBar) {
+                    if (pageTotal > 1 && currentKind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE)) {
+                        tellPage(PortCommand.goToPage((seekBar.progress + 1).coerceIn(1, pageTotal)))
+                    }
+                }
+            }
+        )
 
         copySource = savedInstanceState?.getString(STATE_COPY_SOURCE)?.let(Uri::parse)
         trashing = savedInstanceState?.getString(STATE_TRASHING)?.toUri()
@@ -972,6 +984,22 @@ open class ViewerActivity : AppCompatActivity() {
     private fun updateBottomCounter() {
         val counter = findViewById<TextView>(R.id.bottomPageCounter) ?: return
         counter.text = if (pageAt > 0 && pageTotal > 0) getString(R.string.page_of_total, pageAt, pageTotal) else ""
+        val seek = findViewById<SeekBar>(R.id.pdfPageSeek) ?: return
+        val pdf = currentKind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE)
+        seek.visibility = if (pdf && pageTotal > 1) View.VISIBLE else View.GONE
+        if (pageTotal > 1) {
+            seek.max = pageTotal - 1
+            seek.progress = (pageAt - 1).coerceIn(0, seek.max)
+        }
+    }
+
+    /** A center tap brings back the reader controls, as in an e-reader. */
+    private fun toggleReaderControls() {
+        val bar = findViewById<View>(R.id.readerBottomBar)
+        val visible = bar.visibility != View.VISIBLE
+        bar.visibility = if (visible) View.VISIBLE else View.GONE
+        if (documentChrome != null) documentChrome?.setReaderVisible(visible)
+        else findViewById<MaterialToolbar>(R.id.toolbar).visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     private fun updateBottomScroll(web: WebView) {
@@ -2108,6 +2136,15 @@ open class ViewerActivity : AppCompatActivity() {
 
                 override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                     if (touchExplorationOn()) return false
+                    if (kind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE)) {
+                        val edge = web.width * 0.22f
+                        when {
+                            e.x < edge -> turnPage(forward = false)
+                            e.x > web.width - edge -> turnPage(forward = true)
+                            else -> toggleReaderControls()
+                        }
+                        return false
+                    }
                     turnPage(forward = e.x >= web.width / 2f)
                     return false
                 }
@@ -2183,6 +2220,7 @@ open class ViewerActivity : AppCompatActivity() {
                 "https://$ASSET_HOST/assets/viewer/${kind.page}" +
                     "?name=${Uri.encode(name)}&ext=${Uri.encode(ext)}&ranged=$ranged" +
                     (if (kind == FileKind.PDF_SIMPLE && Settings.pdfSplitWidePages(this)) "&splitwide=1" else "") +
+                    (if (kind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE) && Settings.pdfHorizontalPages(this)) "&pageMode=1" else "") +
                     (if (total > 0) "&length=$total" else "") +
                     "&night=$night" +
                     (if (resumeAt > 1) "&resume=$resumeAt" else "") +

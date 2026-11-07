@@ -104,6 +104,9 @@ internal class DocumentChrome(
         if (toldGone != "0") tellPage(PortCommand.barGone(toldGone))
     }
 
+    /** Shows or hides the title bar when the reader taps the middle of a PDF page. */
+    fun setReaderVisible(visible: Boolean) = show(visible)
+
     private val heightChanged = View.OnLayoutChangeListener { _, _, t, _, b, _, _, _, _ ->
         val height = b - t
         if (height == told) return@OnLayoutChangeListener

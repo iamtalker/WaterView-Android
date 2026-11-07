@@ -5,6 +5,9 @@ import * as pdfjsLib from "./lib/pdf.min.mjs";
 pdfjsLib.GlobalWorkerOptions.workerSrc = "./lib/pdf.worker.min.mjs";
 
 var pages = document.getElementById("pages");
+var pageMode = vwParams.get("pageMode") === "1";
+var activePage = 0;
+if (pageMode) document.documentElement.classList.add("vw-page-mode");
 
 /*
  * The width every page is laid out at, read once.
@@ -2213,7 +2216,7 @@ function reportPage() {
   if (!vv || !vv.height) return;
   /* A page bringIntoView() put on screen is named until the reader moves; see there. */
   if (askedFor && Math.abs(vv.pageTop - askedFor.top) > 1) askedFor = null;
-  var n = askedFor ? askedFor.n : pageOnScreen(vv);
+  var n = pageMode ? activePage : askedFor ? askedFor.n : pageOnScreen(vv);
   if (n === lastPageSent) return;
   lastPageSent = n;
   searchPort.postMessage("page " + n + " " + doc.numPages);
@@ -2274,6 +2277,13 @@ var askedFor = null;
  * along with where it left the screen, and named until the reader moves.
  */
 function bringIntoView(slot) {
+  if (pageMode) {
+    activePage = slot.n;
+    slots.forEach(function (item) { item.box.classList.toggle("vw-current", item === slot); });
+    window.scrollTo(0, 0);
+    askedFor = { n: slot.n, top: window.visualViewport ? window.visualViewport.pageTop : 0 };
+    return;
+  }
   var vv = window.visualViewport;
   var shortPage = !!vv && slot.box.getBoundingClientRect().height <= vv.height / 2;
   slot.box.scrollIntoView({ block: shortPage ? "center" : "start" });
@@ -2787,6 +2797,10 @@ if (!vwPdfBlocked) {
       if (resumeAt >= 2 && resumeAt <= slots.length) {
         first = slots[resumeAt - 1];
         return place(first).then(function () { return draw(first); });
+      }
+      if (pageMode) {
+        activePage = first.n;
+        first.box.classList.add("vw-current");
       }
       return draw(first);
     })

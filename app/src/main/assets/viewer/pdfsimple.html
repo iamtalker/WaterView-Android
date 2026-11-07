@@ -39,6 +39,20 @@
   }
   #pages > * { flex: none; }
 
+  /* In page-turn mode, keep one fitted sheet in the viewport at a time. */
+  html.vw-page-mode, html.vw-page-mode body { height: 100%; overflow: hidden; }
+  html.vw-page-mode #pages {
+    position: relative; display: block; box-sizing: border-box;
+    width: calc(100% * var(--vw-shrink));
+    height: calc(100vh - var(--vw-top, 0px)); min-height: 0;
+    padding: 0; margin: 0 auto; overflow: hidden;
+  }
+  html.vw-page-mode #pages > * { display: none !important; }
+  html.vw-page-mode #pages > .pg.vw-current {
+    display: block !important; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%); margin: 0;
+  }
+
   /* A page, framed as in pdf-pages.css, as tall as pdfsimple.js says it is. */
   .pg { overflow: hidden; }
   /* No touch reaches a picture, so a long press can't pick one up or offer to save it. */
