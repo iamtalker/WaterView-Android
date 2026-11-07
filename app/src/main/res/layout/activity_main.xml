@@ -47,8 +47,10 @@
                      drew it in a moment ago, and the debug variant's own icon in a debug
                      build. -->
                 <ImageView
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:adjustViewBounds="true"
+                    android:scaleType="fitCenter"
                     android:importantForAccessibility="no"
                     android:src="@mipmap/ic_launcher" />
 

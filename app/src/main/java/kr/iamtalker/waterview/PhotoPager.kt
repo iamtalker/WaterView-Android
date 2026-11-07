@@ -3,6 +3,7 @@ package kr.iamtalker.waterview
 import android.content.ContentResolver
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Rect
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.view.ViewGroup
@@ -24,6 +25,9 @@ internal class PhotoPager(
     first: ChildDoc,
     private val host: Host,
     private val uriOverride: ((ChildDoc) -> Uri)? = null,
+    private val rightToLeft: Boolean = false,
+    private val doublePage: Boolean = false,
+    private val splitWidePages: Boolean = false,
 ) {
 
     /** What the viewer does for the pages. */
@@ -32,7 +36,7 @@ internal class PhotoPager(
         fun look(uri: Uri, ext: String, then: (Look) -> Unit)
 
         /** The tiling view for the still photo at [uri], which calls [failed] when it can't draw it. */
-        fun still(uri: Uri, name: String, rotation: Int, failed: () -> Unit): StillPhotoView
+        fun still(uri: Uri, name: String, rotation: Int, ready: (Int, Int) -> Unit, failed: () -> Unit): StillPhotoView
 
         /** The photo on screen has come to be drawn by the tiling view, or has stopped being. */
         fun stillChanged()
@@ -51,6 +55,8 @@ internal class PhotoPager(
     data class Look(val moves: Boolean, val rotation: Int)
 
     private var photos = listOf(first)
+    private val splitSources = HashMap<String, ChildDoc>()
+    private val splitRegions = HashMap<String, Rect>()
     private val pages = Pages()
 
     /** The page playing a moving picture, if one is. */
@@ -58,6 +64,8 @@ internal class PhotoPager(
 
     val view = ViewPager2(context).apply {
         setBackgroundColor(Color.BLACK)
+        layoutDirection = if (rightToLeft) android.view.View.LAYOUT_DIRECTION_RTL
+        else android.view.View.LAYOUT_DIRECTION_LTR
         // The photos either side are drawn before they are reached, so one slides in whole
         offscreenPageLimit = 1
         adapter = pages
@@ -82,11 +90,24 @@ internal class PhotoPager(
 
     val count: Int get() = photos.size
 
+    fun previous() {
+        if (view.currentItem > 0) view.setCurrentItem(view.currentItem - 1, true)
+    }
+
+    fun next() {
+        if (view.currentItem < photos.lastIndex) view.setCurrentItem(view.currentItem + 1, true)
+    }
+
     /** The photos' names, in order. Read by tests. */
     val names: List<String> get() = photos.map { it.name }
 
     /** The photo on screen. */
-    val shown: Uri get() = uriOf(photos[view.currentItem.coerceIn(photos.indices)])
+    private val step get() = if (doublePage) 2 else 1
+    private val pageCount get() = (photos.size + step - 1) / step
+    private fun firstIndex(position: Int) = (position * step).coerceIn(photos.indices)
+    private fun sourceOf(photo: ChildDoc) = splitSources[photo.docId] ?: photo
+
+    val shown: Uri get() = uriOf(photos[firstIndex(view.currentItem)])
 
     /** The tiling view drawing the photo on screen, or null where it isn't drawn by one. */
     val stillShown: StillPhotoView? get() = pageAt(view.currentItem)?.still
@@ -95,11 +116,10 @@ internal class PhotoPager(
     fun fill(all: List<ChildDoc>, at: Int) {
         if (photos.size != 1 || all.size < 2 || all.getOrNull(at)?.docId != photos[0].docId) return
         photos = all
-        pages.notifyItemRangeInserted(0, at)
-        pages.notifyItemRangeInserted(at + 1, all.size - at - 1)
-        view.setCurrentItem(at, false)
+        pages.notifyDataSetChanged()
+        view.setCurrentItem(at / step, false)
         // Said again for the first photo, which no page change announces
-        announce(at)
+        announce(at / step)
     }
 
     /**
@@ -112,7 +132,7 @@ internal class PhotoPager(
         val at = photos.indexOfFirst { it.docId == docId }
         if (at < 0 || photos.size < 2) return false
         photos = photos.filterIndexed { i, _ -> i != at }
-        pages.notifyItemRemoved(at)
+        pages.notifyDataSetChanged()
         // The photo after it takes its number, so no page change comes to name it, or to play
         // it if it moves
         view.post {
@@ -122,15 +142,21 @@ internal class PhotoPager(
         return true
     }
 
-    private fun uriOf(photo: ChildDoc): Uri = uriOverride?.invoke(photo)
-        ?: DocumentsContract.buildDocumentUriUsingTree(opened, photo.docId)
-
-    private fun announce(position: Int) {
-        val photo = photos.getOrNull(position) ?: return
-        host.shown(photo, uriOf(photo), position, photos.size)
+    private fun uriOf(photo: ChildDoc): Uri {
+        val source = sourceOf(photo)
+        return uriOverride?.invoke(source) ?: DocumentsContract.buildDocumentUriUsingTree(opened, source.docId)
     }
 
-    private fun onScreen(photo: ChildDoc) = photos.getOrNull(view.currentItem)?.docId == photo.docId
+    private fun announce(position: Int) {
+        val photo = photos.getOrNull(firstIndex(position)) ?: return
+        host.shown(photo, uriOf(photo), position, pageCount)
+    }
+
+    private fun onScreen(photo: ChildDoc): Boolean {
+        val first = firstIndex(view.currentItem)
+        return photos.getOrNull(first)?.docId == photo.docId ||
+            (step == 2 && photos.getOrNull(first + 1)?.docId == photo.docId)
+    }
 
     private fun pageAt(position: Int) =
         (view.getChildAt(0) as RecyclerView).findViewHolderForAdapterPosition(position) as? Page
@@ -156,36 +182,91 @@ internal class PhotoPager(
     }
 
     private inner class Page(val frame: FrameLayout) : RecyclerView.ViewHolder(frame) {
+        private val row = android.widget.LinearLayout(frame.context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            layoutDirection = if (rightToLeft) android.view.View.LAYOUT_DIRECTION_RTL
+            else android.view.View.LAYOUT_DIRECTION_LTR
+        }
+        private val primaryFrame = FrameLayout(frame.context)
+        private val secondaryFrame = FrameLayout(frame.context)
         var photo: ChildDoc? = null
+        private var secondPhoto: ChildDoc? = null
 
         /** Whether its picture needs the page that plays it, rather than the tiling view. */
         var moves = false
 
         /** The tiling view drawing its photo, once there is one. */
         var still: StillPhotoView? = null
+        private var secondStill: StillPhotoView? = null
 
-        fun bind(next: ChildDoc) {
+        init {
+            frame.addView(row, MATCH)
+            row.addView(primaryFrame, android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+            row.addView(secondaryFrame, android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        }
+
+        fun bind(next: ChildDoc, second: ChildDoc?) {
             clear()
             photo = next
+            secondPhoto = second
+            secondaryFrame.visibility = if (second == null) android.view.View.GONE else android.view.View.VISIBLE
+            bindOne(next, primaryFrame, primary = true)
+            second?.let { bindOne(it, secondaryFrame, primary = false) }
+        }
+
+        private fun bindOne(next: ChildDoc, target: FrameLayout, primary: Boolean) {
             val uri = uriOf(next)
             val ext = extOf(next)
-            if (FileKind.detect(ext, next.mime.ifEmpty { null }) != FileKind.IMAGE) return needsPlaying()
+            if (FileKind.detect(ext, next.mime.ifEmpty { null }) != FileKind.IMAGE) {
+                if (primary) needsPlaying()
+                return
+            }
             host.look(uri, ext) { look ->
-                // Swiped past, and drawing another photo by now
-                if (photo !== next) return@look
-                if (look.moves) return@look needsPlaying()
-                val drawn = host.still(uri, next.name, look.rotation) {
-                    // Some formats decode in the WebView where the region decoder gives up
-                    if (photo === next) {
-                        clearStill()
-                        needsPlaying()
+                if (photo !== next && secondPhoto !== next) return@look
+                if (look.moves) {
+                    if (primary && step == 1) needsPlaying()
+                    return@look
+                }
+                var drawn: StillPhotoView? = null
+                drawn = host.still(uri, next.name, look.rotation, ready = { width, height ->
+                    if (primary && splitWidePages && !doublePage && width > height * WIDE_PAGE_RATIO &&
+                        next.docId !in splitRegions && photo?.docId == next.docId
+                    ) splitWide(next, width, height, uri, drawn)
+                }) {
+                    if (photo === next || secondPhoto === next) {
+                        clearStill(target, primary)
+                        if (primary && step == 1) needsPlaying()
                     }
                 }
-                still = drawn
-                frame.addView(drawn, MATCH)
-                drawn.setImage(ImageSource.uri(uri))
-                if (onScreen(next)) host.stillChanged()
+                if (primary) still = drawn else secondStill = drawn
+                target.addView(drawn, MATCH)
+                val source = ImageSource.uri(uri)
+                drawn.setImage(splitRegions[next.docId]?.let(source::region) ?: source)
+                if (primary && onScreen(next)) host.stillChanged()
             }
+        }
+
+        private fun splitWide(next: ChildDoc, width: Int, height: Int, uri: Uri, drawn: StillPhotoView?) {
+            val current = photos.indexOfFirst { it.docId == next.docId }
+            if (current < 0 || next.docId in splitRegions) return
+            val source = sourceOf(next)
+            val middle = width / 2
+            val firstRect = if (rightToLeft) Rect(middle, 0, width, height) else Rect(0, 0, middle, height)
+            val secondRect = if (rightToLeft) Rect(0, 0, middle, height) else Rect(middle, 0, width, height)
+            val first = next.copy(docId = "${source.docId}#wvhalf-a")
+            val second = next.copy(docId = "${source.docId}#wvhalf-b")
+            splitSources[first.docId] = source
+            splitSources[second.docId] = source
+            splitRegions[first.docId] = firstRect
+            splitRegions[second.docId] = secondRect
+            photos = photos.toMutableList().apply {
+                this[current] = first
+                add(current + 1, second)
+            }
+            photo = first
+            drawn?.setImage(ImageSource.uri(uri).region(firstRect))
+            pages.notifyItemInserted(current + 1)
+            view.post { announce(view.currentItem) }
         }
 
         private fun needsPlaying() {
@@ -196,33 +277,41 @@ internal class PhotoPager(
 
         fun clear() {
             if (playing === this) stop()
-            clearStill()
+            clearStill(primaryFrame, primary = true)
+            clearStill(secondaryFrame, primary = false)
             moves = false
             photo = null
+            secondPhoto = null
         }
 
-        private fun clearStill() {
-            val had = still != null
-            still?.recycle()
-            still = null
-            frame.removeAllViews()
-            if (had && photo?.let(::onScreen) == true) host.stillChanged()
+        private fun clearStill(target: FrameLayout, primary: Boolean) {
+            val old = if (primary) still else secondStill
+            if (primary) still = null else secondStill = null
+            old?.recycle()
+            target.removeAllViews()
+            if (old != null && primary && photo?.let(::onScreen) == true) host.stillChanged()
         }
     }
 
     private inner class Pages : RecyclerView.Adapter<Page>() {
-        override fun getItemCount() = photos.size
+        override fun getItemCount() = pageCount
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
             // A page has to fill the pager
             Page(FrameLayout(parent.context).apply { layoutParams = MATCH })
 
-        override fun onBindViewHolder(holder: Page, position: Int) = holder.bind(photos[position])
+        override fun onBindViewHolder(holder: Page, position: Int) {
+            val at = firstIndex(position)
+            holder.bind(photos[at], photos.getOrNull(at + 1).takeIf { step == 2 })
+        }
 
         override fun onViewRecycled(holder: Page) = holder.clear()
     }
 
     private companion object {
+        // Real scans often include white margins and cover art, so a modestly landscape
+        // ratio catches a two-page spread without splitting ordinary portrait pages.
+        const val WIDE_PAGE_RATIO = 1.15f
         val MATCH get() = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
 
         fun extOf(photo: ChildDoc) = photo.name.substringAfterLast('.', "").lowercase()

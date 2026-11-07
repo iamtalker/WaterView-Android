@@ -7,9 +7,8 @@ import androidx.core.content.edit
  * The reader's own preferences, as opposed to [Recents], which is a record of what
  * they opened.
  *
- * WaterView has never had a settings screen and does not want one; settings here persist
- * across opens because reading preferences and view modes are not things you want to
- * re-select each time.
+ * Reader preferences persist across opens so the reading direction and page layout are
+ * chosen once, then stay out of the way.
  *
  * Not backed up: `allowBackup="false"` in the manifest covers this file along with the
  * recents list, for the reason given there.
@@ -20,6 +19,38 @@ object Settings {
     private const val KEY_NIGHT = "night"
     private const val KEY_SORT_ORDER = "folder_sort_order"
     private const val KEY_BOOK_TEXT = "book_text_size"
+    private const val KEY_MANGA_RTL = "manga_rtl"
+    private const val KEY_MANGA_DOUBLE_PAGE = "manga_double_page"
+    private const val KEY_SPLIT_WIDE_PAGES = "split_wide_pages"
+    private const val KEY_PDF_HORIZONTAL = "pdf_horizontal_pages"
+
+    fun mangaRightToLeft(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_MANGA_RTL, false)
+
+    fun setMangaRightToLeft(context: Context, value: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_MANGA_RTL, value) }
+    }
+
+    fun mangaDoublePage(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_MANGA_DOUBLE_PAGE, false)
+
+    fun setMangaDoublePage(context: Context, value: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_MANGA_DOUBLE_PAGE, value) }
+    }
+
+    fun splitWidePages(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_SPLIT_WIDE_PAGES, true)
+
+    fun setSplitWidePages(context: Context, value: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_SPLIT_WIDE_PAGES, value) }
+    }
+
+    fun pdfHorizontalPages(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_PDF_HORIZONTAL, false)
+
+    fun setPdfHorizontalPages(context: Context, value: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_PDF_HORIZONTAL, value) }
+    }
 
     /**
      * The sizes a book's text can be set to, as a percentage of the size it opens at. Nine

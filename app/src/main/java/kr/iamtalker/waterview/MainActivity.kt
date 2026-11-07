@@ -168,6 +168,7 @@ class MainActivity : AppCompatActivity() {
                 R.id.action_filter -> { showFilterDialog(); true }
                 R.id.action_play -> { openPlayListing(); true }
                 R.id.action_share_app -> { shareWaterView(); true }
+                R.id.action_settings -> { startActivity(Intent(this, SettingsActivity::class.java)); true }
                 R.id.action_update -> { checkForUpdates(); true }
                 R.id.action_about -> { showAbout(); true }
                 else -> false
@@ -798,7 +799,10 @@ class MainActivity : AppCompatActivity() {
         WELCOME_BADGES.forEach { (label, color) ->
             val tile = layoutInflater.inflate(R.layout.view_welcome_tile, grid, false) as TextView
             tile.text = label
-            tile.background.mutate().setTint(color)
+            // The welcome tiles are quieter than file-row badges: the type remains distinct
+            // in the list, while the first screen keeps one soft WaterView blue surface.
+            tile.background.mutate().setTint(MaterialColors.getColor(tile, com.google.android.material.R.attr.colorPrimaryContainer))
+            tile.setTextColor(MaterialColors.getColor(tile, com.google.android.material.R.attr.colorOnPrimaryContainer))
             grid.addView(tile)
         }
         // One description for all nine, and screenReaderFocusable is what makes the grid a

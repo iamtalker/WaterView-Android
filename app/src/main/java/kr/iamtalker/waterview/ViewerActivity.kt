@@ -266,6 +266,11 @@ open class ViewerActivity : AppCompatActivity() {
         // After the search bar's, so it is asked first: what it closes is over the whole page
         onBackPressedDispatcher.addCallback(this, coverBackCallback)
         pageIndicator.setOnClickListener { askForPage() }
+        findViewById<View>(R.id.bottomSettings).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+        findViewById<View>(R.id.bottomPrev).setOnClickListener { turnPage(forward = false) }
+        findViewById<View>(R.id.bottomNext).setOnClickListener { turnPage(forward = true) }
 
         copySource = savedInstanceState?.getString(STATE_COPY_SOURCE)?.let(Uri::parse)
         trashing = savedInstanceState?.getString(STATE_TRASHING)?.toUri()
@@ -324,6 +329,7 @@ open class ViewerActivity : AppCompatActivity() {
         }
 
         fun show(kind: FileKind) {
+            currentKind = kind
             when (kind) {
                 FileKind.IMAGE, FileKind.IMAGE_WEB -> {
                     floatOverPicture()
@@ -481,6 +487,10 @@ open class ViewerActivity : AppCompatActivity() {
         updateRotate()
         setUpPrint(toolbar, kind, uri, name)
         pointActionsAt(toolbar, uri, name, ext, mime)
+        toolbar.menu.findItem(R.id.action_settings).setOnMenuItemClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+            true
+        }
     }
 
     /**
@@ -764,6 +774,24 @@ open class ViewerActivity : AppCompatActivity() {
      */
     private var pageAt = 0
 
+    /** The format currently on screen, for the reader's bottom page controls. */
+    private var currentKind: FileKind? = null
+
+    private data class MangaConfig(val rtl: Boolean, val doublePage: Boolean, val splitWide: Boolean)
+    private var appliedMangaConfig: MangaConfig? = null
+
+    private fun mangaConfig() = MangaConfig(
+        Settings.mangaRightToLeft(this),
+        Settings.mangaDoublePage(this),
+        Settings.splitWidePages(this),
+    )
+
+    override fun onResume() {
+        super.onResume()
+        val applied = appliedMangaConfig ?: return
+        if (applied != mangaConfig()) recreate()
+    }
+
     @androidx.annotation.VisibleForTesting
     internal var pageTotal = 0
 
@@ -925,6 +953,7 @@ open class ViewerActivity : AppCompatActivity() {
             val percent = bookPercent(pageAt, pageTotal)
             pill.contentDescription = getString(R.string.book_position_spoken, percent)
             pill.text = getString(R.string.scroll_position, percent)
+            updateBottomCounter()
             return
         }
         pill.contentDescription = getString(
@@ -932,6 +961,38 @@ open class ViewerActivity : AppCompatActivity() {
             pageAt, pageTotal
         )
         pill.text = getString(R.string.page_indicator, pageAt, pageTotal)
+        updateBottomCounter()
+    }
+
+    private fun updateBottomCounter() {
+        val counter = findViewById<TextView>(R.id.bottomPageCounter) ?: return
+        counter.text = if (pageAt > 0 && pageTotal > 0) getString(R.string.page_of_total, pageAt, pageTotal) else ""
+    }
+
+    private fun updateBottomScroll(web: WebView) {
+        if (pageTotal > 0 || web.height <= 0) return
+        val range = (web.contentHeight * web.resources.displayMetrics.density - web.height).coerceAtLeast(1f)
+        val percent = (web.scrollY * 100f / range).toInt().coerceIn(0, 100)
+        findViewById<TextView>(R.id.bottomPageCounter)?.text = getString(R.string.scroll_position, percent)
+    }
+
+    /** Page controls and a confirmed side tap share this path; scrolling remains available. */
+    private fun turnPage(forward: Boolean) {
+        val kind = currentKind ?: return
+        val pager = photoPager
+        if (pager != null && pager.count > 1) {
+            if (forward) pager.next() else pager.previous()
+            return
+        }
+        val web = webView ?: return
+        if (kind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE) &&
+            Settings.pdfHorizontalPages(this) && pageTotal > 1
+        ) {
+            tellPage(PortCommand.goToPage((pageAt + if (forward) 1 else -1).coerceIn(1, pageTotal)))
+            return
+        }
+        val distance = (web.height * 0.82f).toInt().coerceAtLeast(1)
+        web.scrollBy(0, if (forward) distance else -distance)
     }
 
     private fun restartPageIndicatorIdle() {
@@ -1681,7 +1742,13 @@ open class ViewerActivity : AppCompatActivity() {
      * The tiling view for the still photo at [uri], turned by [rotation] and by however far the
      * reader has turned it, which calls [failed] when it can't draw it.
      */
-    private fun photoView(uri: Uri, name: String, rotation: Int, failed: () -> Unit) = StillPhotoView(this).apply {
+    private fun photoView(
+        uri: Uri,
+        name: String,
+        rotation: Int,
+        ready: (Int, Int) -> Unit = { _, _ -> },
+        failed: () -> Unit,
+    ) = StillPhotoView(this).apply {
         contentDescription = name
         setBackgroundColor(Color.BLACK)
         setMinimumScaleType(SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE)
@@ -1693,7 +1760,10 @@ open class ViewerActivity : AppCompatActivity() {
         orientation = rotation
         turnTo(turns[uri.toString()] ?: 0)
         setOnImageEventListener(object : SubsamplingScaleImageView.DefaultOnImageEventListener() {
-            override fun onReady() = fitDoubleTap(this@apply)
+            override fun onReady() {
+                fitDoubleTap(this@apply)
+                ready(sWidth, sHeight)
+            }
 
             override fun onImageLoadError(e: Exception) = failed()
         })
@@ -1774,13 +1844,20 @@ open class ViewerActivity : AppCompatActivity() {
 
     /** Pages in the same folder of a ZIP are a comic, with the usual swipe reader. */
     private fun showArchivePhotos(container: FrameLayout, opened: Uri, pages: List<Uri>) {
+        appliedMangaConfig = mangaConfig()
         val docs = pages.map { uri ->
             val name = uri.lastPathSegment.orEmpty()
             ChildDoc(uri.toString(), name, contentResolver.getType(uri).orEmpty(), 0, 0)
         }
         val at = pages.indexOf(opened).takeIf { it >= 0 } ?: 0
         val first = docs[at]
-        val pager = PhotoPager(this, opened, first, photoHost) { Uri.parse(it.docId) }
+        val pager = PhotoPager(
+            this, opened, first, photoHost,
+            uriOverride = { Uri.parse(it.docId) },
+            rightToLeft = Settings.mangaRightToLeft(this),
+            doublePage = Settings.mangaDoublePage(this),
+            splitWidePages = Settings.splitWidePages(this),
+        )
         photoPager = pager
         photosListed = true
         countsPhotos = true
@@ -1794,7 +1871,8 @@ open class ViewerActivity : AppCompatActivity() {
         override fun look(uri: Uri, ext: String, then: (PhotoPager.Look) -> Unit) =
             offMain(then) { app -> pictureLook(app.contentResolver, uri, ext) }
 
-        override fun still(uri: Uri, name: String, rotation: Int, failed: () -> Unit) = photoView(uri, name, rotation, failed)
+        override fun still(uri: Uri, name: String, rotation: Int, ready: (Int, Int) -> Unit, failed: () -> Unit) =
+            photoView(uri, name, rotation, ready, failed)
 
         override fun stillChanged() = updateRotate()
 
@@ -2012,11 +2090,28 @@ open class ViewerActivity : AppCompatActivity() {
         } else {
             null
         }
+        val pageTaps = if (kind in setOf(FileKind.TEXT, FileKind.MD, FileKind.PDF, FileKind.PDF_SIMPLE)) {
+            GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+                override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                    if (kind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE) && Settings.pdfHorizontalPages(this@ViewerActivity) &&
+                        e1 != null && kotlin.math.abs(e2.x - e1.x) > kotlin.math.abs(e2.y - e1.y)
+                    ) turnPage(forward = velocityX < 0)
+                    return false
+                }
+
+                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                    if (touchExplorationOn()) return false
+                    turnPage(forward = e.x >= web.width / 2f)
+                    return false
+                }
+            })
+        } else null
         // Not consumed: the document still takes every touch
         web.setOnTouchListener { _, event ->
             documentChrome?.touched(event)
             doubleTapZoom?.touched(event)
             pictureTaps?.onTouchEvent(event)
+            pageTaps?.onTouchEvent(event)
             false
         }
 
@@ -2024,6 +2119,7 @@ open class ViewerActivity : AppCompatActivity() {
         // the port. See showPageIndicator for why the two are separate.
         web.setOnScrollChangeListener { _, _, y, _, oldY ->
             showPageIndicator()
+            updateBottomScroll(web)
             syncFastScroll()
             documentChrome?.scrolled(y, oldY)
         }

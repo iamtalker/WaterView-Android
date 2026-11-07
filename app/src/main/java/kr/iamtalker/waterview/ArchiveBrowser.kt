@@ -120,8 +120,30 @@ internal class ArchiveTree(private val entries: List<ArchiveEntry>) {
         return dirs.map { it.name } to docs.map { entries[it.docId.toInt()] }
     }
 
+    /** A comic archive is a folder made up only of image pages, with enough pages to read. */
+    fun comicPages(folder: String): List<ArchiveEntry>? {
+        val (dirs, files) = list(folder)
+        if (dirs.isNotEmpty()) return null
+        val meaningful = files.filterNot { it.name.lowercase() in COMIC_METADATA }
+        if (meaningful.size < 2 || meaningful.any { !it.readable || it.encrypted }) return null
+        val pages = meaningful.filter { entry ->
+            val ext = entry.name.substringAfterLast('.', "").lowercase()
+            FileKind.detect(ext, null) in setOf(FileKind.IMAGE, FileKind.IMAGE_WEB)
+        }
+        return pages.takeIf { it.size == meaningful.size }
+    }
+
+    /** A one-folder wrapper around a comic is common in desktop-created archives. */
+    fun comicContent(): List<ArchiveEntry>? {
+        comicPages("")?.let { return it }
+        val (dirs, files) = list("")
+        if (dirs.size != 1 || files.isNotEmpty()) return null
+        return comicPages(dirs.single())
+    }
+
     private companion object {
         const val MACOS_FORKS = "__MACOSX"
+        val COMIC_METADATA = setOf("comicinfo.xml", "thumbs.db", "desktop.ini", ".ds_store")
 
         /** As many folders as ZipReader lists entries, which no real archive comes near. */
         const val MAX_FOLDERS = 200_000
@@ -175,6 +197,7 @@ internal class ArchiveBrowser(
     private var guessed: Charset? = null
 
     private var tree: ArchiveTree? = null
+    private var autoOpenComic = restoredFolder == null
     private val adapter = RowAdapter()
     private val list = RecyclerView(activity)
     private val main = Handler(Looper.getMainLooper())
@@ -264,6 +287,21 @@ internal class ArchiveBrowser(
                     is Listing.Ready -> {
                         tree = result.tree
                         if (chosen == null) guessed = result.codePage
+                        val comic = if (autoOpenComic && folder.isEmpty()) result.tree.comicContent() else null
+                        autoOpenComic = false
+                        if (comic != null) {
+                            val pageUris = comic.map { ArchiveProvider.uriFor(activity, archive, it) }
+                            activity.startActivity(
+                                Intent().setClassName(activity, ViewerActivity.INTERNAL_VIEWER)
+                                    .setData(pageUris.first())
+                                    .putStringArrayListExtra(
+                                        ViewerActivity.EXTRA_ARCHIVE_PHOTOS,
+                                        ArrayList(pageUris.map(Uri::toString))
+                                    )
+                            )
+                            activity.finish()
+                            return@post
+                        }
                         // Offered only where the names needed a code page, since everywhere
                         // else it would change nothing: they said what they were
                         toolbar.menu.findItem(R.id.action_name_encoding)?.isVisible = result.codePage != null

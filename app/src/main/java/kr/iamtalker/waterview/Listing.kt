@@ -15,19 +15,19 @@ import android.provider.DocumentsContract
 
 /** WaterView's desktop blue family, kept cohesive across file-type badges. */
 internal val PDF_BADGE = "PDF" to 0xFF155A96.toInt()
-internal val DOC_BADGE = "DOC" to 0xFF1769A8.toInt()
-internal val XLS_BADGE = "XLS" to 0xFF285D7A.toInt()
-internal val PPT_BADGE = "PPT" to 0xFF315B88.toInt()
-internal val IMG_BADGE = "IMG" to 0xFF176D95.toInt()
-internal val VID_BADGE = "VID" to 0xFF285B8A.toInt()
-internal val AUD_BADGE = "AUD" to 0xFF176879.toInt()
-internal val MD_BADGE = "MD" to 0xFF455A73.toInt()
-internal val TXT_BADGE = "TXT" to 0xFF53647A.toInt()
+internal val DOC_BADGE = "문서" to 0xFF1769A8.toInt()
+internal val XLS_BADGE = "표" to 0xFF285D7A.toInt()
+internal val PPT_BADGE = "발표" to 0xFF315B88.toInt()
+internal val IMG_BADGE = "이미지" to 0xFF176D95.toInt()
+internal val VID_BADGE = "영상" to 0xFF285B8A.toInt()
+internal val AUD_BADGE = "음원" to 0xFF176879.toInt()
+internal val MD_BADGE = "글" to 0xFF455A73.toInt()
+internal val TXT_BADGE = "텍스트" to 0xFF53647A.toInt()
 
 internal val MODEL_BADGE = "3D" to 0xFF314A70.toInt()
 
 /** What an unsupported file falls back to. */
-internal val FILE_BADGE = "FILE" to 0xFF586B82.toInt()
+internal val FILE_BADGE = "파일" to 0xFF586B82.toInt()
 
 /**
  * The last tile of the welcome grid, standing for everything WaterView opens that has no tile of
@@ -37,7 +37,7 @@ internal val FILE_BADGE = "FILE" to 0xFF586B82.toInt()
  * Three letters, as every other tile is. The tile is a fixed square and its label grows with
  * the phone's font size, and a fourth letter wrapped it at 150% and cut it off at 200%.
  */
-internal val ETC_BADGE = "ETC" to TXT_BADGE.second
+internal val ETC_BADGE = "기타" to TXT_BADGE.second
 
 /**
  * Draws the nine tiles of the welcome grid, in reading order.

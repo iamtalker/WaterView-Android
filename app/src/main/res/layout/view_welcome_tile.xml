@@ -15,6 +15,7 @@
     android:layout_margin="@dimen/welcome_tile_gap"
     android:background="@drawable/badge_bg"
     android:gravity="center"
+    android:includeFontPadding="true"
     android:importantForAccessibility="no"
     android:textColor="#FFFFFF"
     android:textSize="@dimen/welcome_tile_text"

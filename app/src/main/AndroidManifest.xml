@@ -68,6 +68,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
         <receiver android:name=".UpdateReceiver" android:exported="false" />
 
         <!-- Each file another app opens gets a card of its own in the recent apps screen, rather

@@ -84,4 +84,8 @@
         android:title="@string/show_in_file_manager"
         android:visible="false"
         app:showAsAction="never" />
+    <item
+        android:id="@+id/action_settings"
+        android:title="@string/reading_settings"
+        app:showAsAction="never" />
 </menu>

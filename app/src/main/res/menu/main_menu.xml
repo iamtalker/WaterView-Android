@@ -27,6 +27,10 @@
         android:title="@string/share_app"
         app:showAsAction="never" />
     <item
+        android:id="@+id/action_settings"
+        android:title="@string/reading_settings"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_update"
         android:title="@string/check_updates"
         app:showAsAction="never" />

@@ -13,11 +13,21 @@
 - 문서·텍스트: PDF, Markdown, TXT, DOCX, XLSX, PPTX 등
 - 동영상·음악: MP4, MKV, AVI, MOV, MP3 등
 
-Gander 기반 전환으로 이미지 확대, PDF 렌더링, ZIP 내부 보기, 문서·미디어 재생 구조를 먼저 확보하고 데스크톱 물뷰의 만화 보기 설정을 추가합니다.
+## 현재 구현 및 다음 단계
+
+기본 뷰어와 ZIP 내부 탐색을 바탕으로 물뷰의 읽기 경험을 적용하고 있습니다.
+
+- **완료:** 일본 만화 읽기 방향, 한쪽·양쪽 보기, 넓은 표지·스캔 페이지 분할
+- **완료:** 그림만 들어 있는 ZIP/CBZ를 눌렀을 때 만화 뷰어로 바로 열기
+- **완료:** TXT·Markdown·PDF의 좌우 탭 넘김과 하단 이전/다음 도구 모음
+- **완료:** PDF 페이지 넘김 방식, 만화 읽기 설정 화면
+- **다음:** EPUB 읽기, 대용량 ZIP의 메모리 사용량과 페이지 넘김 성능 개선
+
+기능은 실제 Android 에뮬레이터와 사용자가 제공한 파일로 확인합니다.
 
 ## 업데이트
 
-최신 APK는 [GitHub Releases](https://github.com/iamtalker/WaterView-Android/releases)에서 받습니다. 앱 메뉴의 **Check for updates**에서도 새 릴리즈를 확인하고 Android 설치 확인 화면을 열 수 있습니다. 저장소는 `iamtalker/WaterView-Android`입니다.
+최신 APK는 [GitHub Releases](https://github.com/iamtalker/WaterView-Android/releases)에서 받습니다. 앱 메뉴의 **업데이트 확인**에서도 새 릴리스를 확인하고 Android 설치 화면을 열 수 있습니다. 저장소는 `iamtalker/WaterView-Android`입니다.
 
 ## 빌드
 
