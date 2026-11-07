@@ -789,6 +789,7 @@ open class ViewerActivity : AppCompatActivity() {
     private data class MangaConfig(val rtl: Boolean, val splitWide: Boolean)
     private var appliedMangaConfig: MangaConfig? = null
     private var appliedPdfSplitWide: Boolean? = null
+    private var appliedPdfHorizontal: Boolean? = null
 
     private fun mangaConfig() = MangaConfig(
         Settings.mangaRightToLeft(this),
@@ -799,7 +800,8 @@ open class ViewerActivity : AppCompatActivity() {
         super.onResume()
         if (appliedMangaConfig?.let { it != mangaConfig() } == true ||
             (currentKind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE) &&
-                appliedPdfSplitWide?.let { it != Settings.pdfSplitWidePages(this) } == true)
+                (appliedPdfSplitWide?.let { it != Settings.pdfSplitWidePages(this) } == true ||
+                    appliedPdfHorizontal?.let { it != Settings.pdfHorizontalPages(this) } == true))
         ) recreate()
     }
 
@@ -980,6 +982,11 @@ open class ViewerActivity : AppCompatActivity() {
         counter.text = if (pageAt > 0 && pageTotal > 0) getString(R.string.page_of_total, pageAt, pageTotal) else ""
         val seek = findViewById<SeekBar>(R.id.pdfPageSeek) ?: return
         val pdf = currentKind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE)
+        val pageButtons = findViewById<View>(R.id.bottomPrev)
+        val nextButton = findViewById<View>(R.id.bottomNext)
+        val showPdfPageButtons = !pdf || Settings.pdfHorizontalPages(this)
+        pageButtons.visibility = if (showPdfPageButtons) View.VISIBLE else View.GONE
+        nextButton.visibility = if (showPdfPageButtons) View.VISIBLE else View.GONE
         seek.visibility = if (pdf && pageTotal > 1) View.VISIBLE else View.GONE
         if (pageTotal > 1) {
             seek.max = pageTotal - 1
@@ -1950,6 +1957,7 @@ open class ViewerActivity : AppCompatActivity() {
     private fun showWeb(container: FrameLayout, uri: Uri, kind: FileKind, name: String, ext: String) {
         if (kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE) {
             appliedPdfSplitWide = Settings.pdfSplitWidePages(this)
+            appliedPdfHorizontal = Settings.pdfHorizontalPages(this)
         }
         // Android throws here when it has no working WebView: while Android System WebView is
         // being updated, or where someone has turned it off
