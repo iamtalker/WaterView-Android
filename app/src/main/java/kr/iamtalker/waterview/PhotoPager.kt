@@ -97,6 +97,11 @@ internal class PhotoPager(
         if (view.currentItem < photos.lastIndex) view.setCurrentItem(view.currentItem + 1, true)
     }
 
+    /** Goes to the photo at [index], counted from nought, without an animation across the ones between. */
+    fun goTo(index: Int) {
+        if (index in photos.indices && index != view.currentItem) view.setCurrentItem(index, false)
+    }
+
     /** The photos' names, in order. Read by tests. */
     val names: List<String> get() = photos.map { it.name }
 

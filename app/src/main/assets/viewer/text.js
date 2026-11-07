@@ -130,14 +130,38 @@ function reportTop() {
 }
 var reportTries = 0;
 
+/* How far down the text the screen is, in thousandths, for the app's scroll bar */
+var lastFraction = -1;
+function reportFraction() {
+  var room = document.documentElement.scrollHeight - innerHeight;
+  var n = room > 0 ? Math.round(pageYOffset * 1000 / room) : 0;
+  n = Math.max(0, Math.min(1000, n));
+  if (n === lastFraction) return;
+  if (vwFind.post("sc " + n)) lastFraction = n;
+}
+
+/* Scrolls to a thousandth of the way down, reading the next page first when the bar is at its end
+   and the text is not all read yet */
+function scrollToFraction(n) {
+  if (!(n >= 0)) return Promise.resolve();
+  if (!finished && doc && n >= 990) {
+    return showPage().then(function () { return scrollToFraction(n); });
+  }
+  var room = document.documentElement.scrollHeight - innerHeight;
+  scrollTo(0, room > 0 ? room * n / 1000 : 0);
+  reportTop();
+  reportFraction();
+  return Promise.resolve();
+}
+
 var reportTimer = 0;
 addEventListener("scroll", function () {
   clearTimeout(reportTimer);
-  reportTimer = setTimeout(reportTop, 300);
+  reportTimer = setTimeout(function () { reportTop(); reportFraction(); }, 300);
 }, { passive: true });
 /* Scrolling is also checked once a second, since a scroll the page does not announce would
    otherwise leave the place at where it was last reported */
-setInterval(reportTop, 1000);
+setInterval(function () { reportTop(); reportFraction(); }, 1000);
 document.addEventListener("visibilitychange", function () {
   if (document.visibilityState === "hidden") reportTop();
 });
@@ -169,6 +193,7 @@ function goToChar(target) {
 
 window.vwPageCommand = function (msg) {
   if (msg.charAt(0) === "j") goToChar(parseInt(msg.slice(1), 10));
+  else if (msg.charAt(0) === "s") scrollToFraction(parseInt(msg.slice(1), 10));
 };
 
 var markAt = parseInt(vwParams.get("mark"), 10);

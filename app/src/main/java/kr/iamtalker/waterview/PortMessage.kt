@@ -62,6 +62,9 @@ internal object PortCommand {
 
     /** Go to a character of a text file, counted from its start. See [PortMessage.Offset]. */
     fun goToOffset(at: Long) = "j$at"
+
+    /** Scroll a text file to a thousandth of the way down it. See [PortMessage.Scroll]. */
+    fun scrollTo(thousandths: Int) = "s$thousandths"
 }
 
 /** What a page sends back, once it has been read and found sound. */
@@ -110,6 +113,9 @@ internal sealed interface PortMessage {
      */
     data class Offset(val at: Long, val snippet: String = "") : PortMessage
 
+    /** How far down a text file the screen is, in thousandths of its length, for its scroll bar. */
+    data class Scroll(val thousandths: Int) : PortMessage
+
     /** The reader asked on the card for the PDF's simple view. See [ViewerActivity.askForSimpleView]. */
     data object SimpleView : PortMessage
 
@@ -143,6 +149,10 @@ internal fun parsePortMessage(data: String?): PortMessage? {
     }
     val said = data?.split(" ") ?: return null
     // "tx <n> <words>", where the words are the text from there on and may hold spaces of their own
+    if (said[0] == "sc" && said.size == 2) {
+        val n = said[1].toIntOrNull() ?: return null
+        return if (n in 0..1000) PortMessage.Scroll(n) else null
+    }
     if (said[0] == "tx" && said.size >= 2) {
         val at = said[1].toLongOrNull() ?: return null
         if (at < 0) return null

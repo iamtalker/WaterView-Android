@@ -278,8 +278,12 @@ open class ViewerActivity : AppCompatActivity() {
                 override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) = Unit
                 override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
                 override fun onStopTrackingTouch(seekBar: SeekBar) {
-                    if (pageTotal > 1 && currentKind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE)) {
+                    if (currentKind == FileKind.TEXT) {
+                        tellPage(PortCommand.scrollTo(seekBar.progress))
+                    } else if (pageTotal > 1 && currentKind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE)) {
                         tellPage(PortCommand.goToPage((seekBar.progress + 1).coerceIn(1, pageTotal)))
+                    } else if (pageTotal > 1 && countsPhotos) {
+                        photoPager?.goTo(seekBar.progress.coerceIn(0, pageTotal - 1))
                     }
                 }
             }
@@ -484,12 +488,14 @@ open class ViewerActivity : AppCompatActivity() {
         setUpNightMode(toolbar, kind)
         // A text file's bookmarks: added where the screen is, and listed to go back to
         val isText = kind == FileKind.TEXT
+        // A PDF's bookmarks are its pages, kept the same way as a text file's places
+        val isPdf = kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE
         toolbar.menu.findItem(R.id.action_bookmark_add).apply {
-            isVisible = isText
+            isVisible = isText || isPdf
             setOnMenuItemClickListener { addBookmark(); true }
         }
         toolbar.menu.findItem(R.id.action_bookmarks).apply {
-            isVisible = isText
+            isVisible = isText || isPdf
             setOnMenuItemClickListener { showBookmarks(); true }
         }
         toolbar.menu.findItem(R.id.action_text_reflow).apply {
@@ -1024,7 +1030,12 @@ open class ViewerActivity : AppCompatActivity() {
         val showPdfPageButtons = !pdf || Settings.pdfHorizontalPages(this)
         pageButtons.visibility = if (showPdfPageButtons) View.VISIBLE else View.GONE
         nextButton.visibility = if (showPdfPageButtons) View.VISIBLE else View.GONE
-        seek.visibility = if (pdf && pageTotal > 1) View.VISIBLE else View.GONE
+        // A text file has no page count, so its bar is the place down it, in thousandths
+        seek.visibility = when {
+            currentKind == FileKind.TEXT -> View.VISIBLE
+            (pdf || countsPhotos) && pageTotal > 1 -> View.VISIBLE
+            else -> View.GONE
+        }
         if (pageTotal > 1) {
             seek.max = pageTotal - 1
             seek.progress = (pageAt - 1).coerceIn(0, seek.max)
@@ -1038,6 +1049,16 @@ open class ViewerActivity : AppCompatActivity() {
         bar.visibility = if (visible) View.VISIBLE else View.GONE
         if (documentChrome != null) documentChrome?.setReaderVisible(visible)
         else findViewById<MaterialToolbar>(R.id.toolbar).visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
+    /** Where a text file's screen is, from the page, for its bar and its percentage. */
+    private fun showTextScroll(thousandths: Int) {
+        val seek = findViewById<SeekBar>(R.id.pdfPageSeek) ?: return
+        seek.visibility = View.VISIBLE
+        seek.max = 1000
+        if (!dragging) seek.progress = thousandths
+        findViewById<TextView>(R.id.bottomPageCounter)?.text =
+            getString(R.string.scroll_position, thousandths / 10)
     }
 
     private fun updateBottomScroll(web: WebView) {
@@ -1695,6 +1716,11 @@ open class ViewerActivity : AppCompatActivity() {
                         // Only a PDF shrinks its pages, and zooms its own double tap while they are
                         is PortMessage.Shrunk -> if (kind == FileKind.PDF) doubleTapZoom?.leftToPage = said.on
                         // A text file's top of screen, for a bookmark and for where it reopens
+                        is PortMessage.Scroll -> if (kind == FileKind.TEXT) {
+                            showTextScroll(said.thousandths)
+                            // At the top of the text the bar comes back, as a scroll up to it would bring it
+                            if (said.thousandths == 0) documentChrome?.reveal()
+                        }
                         is PortMessage.Offset -> if (kind == FileKind.TEXT) {
                             textTop = said.at
                             textSnippet = said.snippet
@@ -1773,6 +1799,17 @@ open class ViewerActivity : AppCompatActivity() {
             !authority.startsWith("$packageName.", ignoreCase = true)
     }
 
+    /** The name of the zip a page of a comic was taken from, read once per zip. */
+    private var zipNameCache: Pair<Uri, String>? = null
+
+    private fun zipTitle(pageUri: Uri): String? {
+        val zip = ArchiveProvider.parse(pageUri)?.archive ?: return null
+        zipNameCache?.takeIf { it.first == zip }?.let { return it.second }
+        val name = resolveDisplayName(zip)
+        zipNameCache = zip to name
+        return name
+    }
+
     private fun resolveDisplayName(uri: Uri): String {
         if (uri.scheme == "content") {
             runCatching {
@@ -1829,6 +1866,8 @@ open class ViewerActivity : AppCompatActivity() {
         setBackgroundColor(Color.BLACK)
         setMinimumScaleType(SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE)
         maxScale = 12f
+        // A light tap on a picture brings the controls up or takes them away
+        setOnClickListener { toggleReaderControls() }
         // The library's own double tap went to a picture pixel a dp, nine times a phone's photo
         // and a small picture not at all, so it goes to twice the fit as a page's does
         setDoubleTapZoomDuration(DOUBLE_TAP_MS)
@@ -1958,7 +1997,13 @@ open class ViewerActivity : AppCompatActivity() {
 
         override fun shown(photo: ChildDoc, uri: Uri, at: Int, of: Int) {
             val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
-            toolbar.title = photo.name
+            // A page of a zip is named by the zip, which is what the reader opened
+            toolbar.title = if (ArchiveProvider.isEntry(this@ViewerActivity, uri)) {
+                zipTitle(uri) ?: photo.name
+            } else {
+                photo.name
+            }
+            toolbar.subtitle = null
             val ext = photo.name.substringAfterLast('.', "").lowercase()
             pointActionsAt(toolbar, uri, photo.name, ext, photo.mime.ifEmpty { null })
             updateRotate()
@@ -2189,7 +2234,14 @@ open class ViewerActivity : AppCompatActivity() {
                         }
                         return false
                     }
-                    turnPage(forward = e.x >= web.width / 2f)
+                    // A text file: a light tap in the middle brings the controls up or takes them
+                    // away, and the sides turn the page as before
+                    val edge = web.width * 0.22f
+                    when {
+                        e.x < edge -> turnPage(forward = false)
+                        e.x > web.width - edge -> turnPage(forward = true)
+                        else -> toggleReaderControls()
+                    }
                     return false
                 }
             })
@@ -2509,6 +2561,17 @@ open class ViewerActivity : AppCompatActivity() {
     /** Puts a bookmark where the top of a text file's screen is. */
     private fun addBookmark() {
         val key = positionKey ?: return
+        if (currentKind == FileKind.PDF || currentKind == FileKind.PDF_SIMPLE) {
+            if (pageAt < 1) return
+            val page = pageAt.toLong()
+            if (Marks.bookmarks(this, key).any { it.at == page }) {
+                Toast.makeText(this, R.string.bookmark_exists, Toast.LENGTH_SHORT).show()
+                return
+            }
+            Marks.add(this, key, page, getString(R.string.page_bookmark_label, pageAt))
+            Toast.makeText(this, R.string.bookmark_added, Toast.LENGTH_SHORT).show()
+            return
+        }
         val at = textTop ?: return
         if (Marks.bookmarks(this, key).any { it.at == at }) {
             Toast.makeText(this, R.string.bookmark_exists, Toast.LENGTH_SHORT).show()
@@ -2531,7 +2594,13 @@ open class ViewerActivity : AppCompatActivity() {
         }
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.bookmarks)
-            .setItems(bookmarkLabels(marks)) { _, which -> tellPage(PortCommand.goToOffset(marks[which].at)) }
+            .setItems(bookmarkLabels(marks)) { _, which ->
+                if (currentKind == FileKind.PDF || currentKind == FileKind.PDF_SIMPLE) {
+                    tellPage(PortCommand.goToPage(marks[which].at.toInt()))
+                } else {
+                    tellPage(PortCommand.goToOffset(marks[which].at))
+                }
+            }
             .setNeutralButton(R.string.bookmark_remove) { _, _ -> removeBookmark(key) }
             .setNegativeButton(android.R.string.cancel, null)
             .show()

@@ -58,7 +58,9 @@ internal class DocumentChrome(
         // First in the frame, so a screen reader comes to it before the document, and drawn over
         // the document all the same by standing higher. Not by elevation, which Material adds to
         // the toolbar's own and tints its surface deeper for.
-        translationZ = toolbar.elevation
+        // Fixed rather than the toolbar's own, which the layout sets to zero now that the bar is flat;
+        // at zero the bar would be drawn under the document it floats over
+        translationZ = 4f * activity.resources.displayMetrics.density
     }
 
     // As float() found them, for land()
@@ -106,6 +108,9 @@ internal class DocumentChrome(
 
     /** Shows or hides the title bar when the reader taps the middle of a PDF page. */
     fun setReaderVisible(visible: Boolean) = show(visible)
+
+    /** Brings the whole bar back, for when the document is at its top and no scroll has said so. */
+    fun reveal() = show(true)
 
     private val heightChanged = View.OnLayoutChangeListener { _, _, t, _, b, _, _, _, _ ->
         val height = b - t
