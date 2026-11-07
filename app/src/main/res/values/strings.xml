@@ -121,11 +121,6 @@
          text with no card to say why. What was done comes first: at a font size above 1.19 a
          360dp bar has no room for the whole line, and it is the end that gets cut. Issue #51. -->
     <string name="unknown_shown_as_text">알 수 없는 형식 · 텍스트로 표시</string>
-    <!-- Under the name of a PDF in the simple view, on a phone whose WebView pdf.js can't run
-         on: its pages are pictures, so there is no text to search, and the renderer draws no
-         filled-in form fields, and draws highlights and comments only from Android 15. -->
-    <string name="simple_view_line">간편 보기: 검색, 메모, 입력란을 지원하지 않습니다.</string>
-    <string name="simple_view_line_notes">간편 보기: 검색과 입력란을 지원하지 않습니다.</string>
     <string name="page_number">페이지 번호</string>
     <string name="page_range">1~%1$d페이지</string>
     <string name="page_out_of_range">1부터 %1$d 사이의 페이지를 입력하세요.</string>

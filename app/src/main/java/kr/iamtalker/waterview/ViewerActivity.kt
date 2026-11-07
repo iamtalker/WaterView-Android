@@ -364,12 +364,6 @@ open class ViewerActivity : AppCompatActivity() {
             setUpActions(toolbar, kind, uri, name, ext, mime)
             // A document that opens turned over opens with the parts around it dark as well
             if (loadedNight) nightChrome.show(true)
-            // What the simple view can't show, under the file's name
-            if (kind == FileKind.PDF_SIMPLE) {
-                val notesDrawn = Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
-                toolbar.subtitle =
-                    getString(if (notesDrawn) R.string.simple_view_line_notes else R.string.simple_view_line)
-            }
         }
 
         val detected = detect(ext, mime)
