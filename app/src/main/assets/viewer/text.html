@@ -41,7 +41,8 @@
   .more button:active { background: #f7e4e0; }
   .more button[disabled] { opacity: 0.5; }
   /* Sideways reading: the text runs down columns one screen wide, and the screen scrolls across them */
-  html.vw-hor { overflow-x: auto; overflow-y: hidden; }
+  /* Horizontal pages are stepped by the reader's pager, never freely dragged by Chromium. */
+  html.vw-hor { overflow-x: hidden; overflow-y: hidden; }
   html.vw-hor body { overflow: visible; height: 100vh; margin: 0; padding: 0; box-sizing: border-box; position: relative; }
   html.vw-hor pre {
     position: absolute;

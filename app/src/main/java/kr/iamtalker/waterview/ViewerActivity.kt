@@ -641,6 +641,11 @@ open class ViewerActivity : AppCompatActivity() {
     /** Print, through Android's own print screen. Issue #45. */
     private fun setUpPrint(toolbar: MaterialToolbar, kind: FileKind, uri: Uri, name: String) {
         val item = toolbar.menu.findItem(R.id.action_print)
+        // Printing is not part of the PDF reader's page and bookmark controls.
+        if (kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE) {
+            item.isVisible = false
+            return
+        }
         val route = printRoute(kind)
         // A card saying the WebView is too old or isn't there has no document on it to print
         val blocked = webView == null ||
@@ -2250,10 +2255,12 @@ open class ViewerActivity : AppCompatActivity() {
         val pageTaps = if (kind in setOf(FileKind.TEXT, FileKind.MD, FileKind.PDF, FileKind.PDF_SIMPLE)) {
             GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
                 override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
-                    if (e1 != null &&
-                        kotlin.math.abs(e2.x - e1.x) > kotlin.math.abs(e2.y - e1.y) &&
-                        kotlin.math.abs(velocityX) > SLIDE_MIN_VELOCITY
-                    ) turnPage(forward = velocityX < 0)
+                    if (kind != FileKind.TEXT || !Settings.textHorizontalPages(this@ViewerActivity)) {
+                        if (e1 != null &&
+                            kotlin.math.abs(e2.x - e1.x) > kotlin.math.abs(e2.y - e1.y) &&
+                            kotlin.math.abs(velocityX) > SLIDE_MIN_VELOCITY
+                        ) turnPage(forward = velocityX < 0)
+                    }
                     return false
                 }
 
@@ -2264,13 +2271,54 @@ open class ViewerActivity : AppCompatActivity() {
                 }
             })
         } else null
-        // Not consumed: the document still takes every touch
-        web.setOnTouchListener { _, event ->
+        var textSwipeStartX = 0f
+        var textSwipeStartY = 0f
+        var textSwipeActive = false
+        val textSwipeSlop = ViewConfiguration.get(this).scaledTouchSlop
+        // Text columns are discrete pages. Take over a horizontal drag after touch slop so the
+        // WebView cannot coast across several columns; vertical text and other viewers keep native scrolling.
+        web.setOnTouchListener { target, event ->
             documentChrome?.touched(event)
             doubleTapZoom?.touched(event)
             pictureTaps?.onTouchEvent(event)
             pageTaps?.onTouchEvent(event)
-            false
+            val pagedText = kind == FileKind.TEXT && Settings.textHorizontalPages(this)
+            if (!pagedText) return@setOnTouchListener false
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    textSwipeStartX = event.x
+                    textSwipeStartY = event.y
+                    textSwipeActive = false
+                    false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (textSwipeActive) return@setOnTouchListener true
+                    val dx = event.x - textSwipeStartX
+                    val dy = event.y - textSwipeStartY
+                    if (kotlin.math.abs(dx) > textSwipeSlop && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
+                        textSwipeActive = true
+                        MotionEvent.obtain(event).apply {
+                            action = MotionEvent.ACTION_CANCEL
+                            target.onTouchEvent(this)
+                            recycle()
+                        }
+                        true
+                    } else false
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!textSwipeActive) return@setOnTouchListener false
+                    val dx = event.x - textSwipeStartX
+                    textSwipeActive = false
+                    if (kotlin.math.abs(dx) >= target.width * 0.15f) turnPage(forward = dx < 0)
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    val wasActive = textSwipeActive
+                    textSwipeActive = false
+                    wasActive
+                }
+                else -> textSwipeActive
+            }
         }
 
         // Any scroll at all is what brings the readout up; the number in it comes from
