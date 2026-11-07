@@ -777,14 +777,10 @@ open class ViewerActivity : AppCompatActivity() {
     /** The format currently on screen, for the reader's bottom page controls. */
     private var currentKind: FileKind? = null
 
-    private data class MangaConfig(val rtl: Boolean, val doublePage: Boolean, val splitWide: Boolean)
+    private data class MangaConfig(val rtl: Boolean)
     private var appliedMangaConfig: MangaConfig? = null
 
-    private fun mangaConfig() = MangaConfig(
-        Settings.mangaRightToLeft(this),
-        Settings.mangaDoublePage(this),
-        Settings.splitWidePages(this),
-    )
+    private fun mangaConfig() = MangaConfig(Settings.mangaRightToLeft(this))
 
     override fun onResume() {
         super.onResume()
@@ -1855,8 +1851,7 @@ open class ViewerActivity : AppCompatActivity() {
             this, opened, first, photoHost,
             uriOverride = { Uri.parse(it.docId) },
             rightToLeft = Settings.mangaRightToLeft(this),
-            doublePage = Settings.mangaDoublePage(this),
-            splitWidePages = Settings.splitWidePages(this),
+            splitWidePages = true,
         )
         photoPager = pager
         photosListed = true

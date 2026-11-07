@@ -6,10 +6,6 @@
     <string name="manga_direction_title">읽는 방향</string>
     <string name="manga_direction_left_to_right">왼쪽에서 오른쪽</string>
     <string name="manga_direction_japanese">일본 만화 · 오른쪽에서 왼쪽</string>
-    <string name="manga_layout_title">페이지 배치</string>
-    <string name="manga_layout_single">한쪽 보기</string>
-    <string name="manga_layout_double">양쪽 보기</string>
-    <string name="split_wide_pages">가로로 긴 만화 그림은 반으로 나눠 보기</string>
     <string name="pdf_settings">PDF 보기</string>
     <string name="pdf_horizontal_pages">좌우로 페이지 넘기기</string>
     <string name="cancel">취소</string>
@@ -238,9 +234,5 @@
     <string-array name="manga_direction_choices">
         <item>@string/manga_direction_left_to_right</item>
         <item>@string/manga_direction_japanese</item>
-    </string-array>
-    <string-array name="manga_layout_choices">
-        <item>@string/manga_layout_single</item>
-        <item>@string/manga_layout_double</item>
     </string-array>
 </resources>

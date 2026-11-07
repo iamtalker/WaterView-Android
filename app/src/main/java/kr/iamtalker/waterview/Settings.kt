@@ -20,8 +20,6 @@ object Settings {
     private const val KEY_SORT_ORDER = "folder_sort_order"
     private const val KEY_BOOK_TEXT = "book_text_size"
     private const val KEY_MANGA_RTL = "manga_rtl"
-    private const val KEY_MANGA_DOUBLE_PAGE = "manga_double_page"
-    private const val KEY_SPLIT_WIDE_PAGES = "split_wide_pages"
     private const val KEY_PDF_HORIZONTAL = "pdf_horizontal_pages"
 
     fun mangaRightToLeft(context: Context): Boolean =
@@ -29,20 +27,6 @@ object Settings {
 
     fun setMangaRightToLeft(context: Context, value: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_MANGA_RTL, value) }
-    }
-
-    fun mangaDoublePage(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_MANGA_DOUBLE_PAGE, false)
-
-    fun setMangaDoublePage(context: Context, value: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_MANGA_DOUBLE_PAGE, value) }
-    }
-
-    fun splitWidePages(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_SPLIT_WIDE_PAGES, true)
-
-    fun setSplitWidePages(context: Context, value: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_SPLIT_WIDE_PAGES, value) }
     }
 
     fun pdfHorizontalPages(context: Context): Boolean =

@@ -38,31 +38,6 @@ class SettingsActivity : AppCompatActivity() {
         }
         refreshDirection()
 
-        val layoutValue = findViewById<TextView>(R.id.mangaLayoutValue)
-        fun refreshLayout() {
-            layoutValue.setText(
-                if (Settings.mangaDoublePage(this)) R.string.manga_layout_double
-                else R.string.manga_layout_single
-            )
-        }
-        findViewById<View>(R.id.mangaLayoutRow).setOnClickListener {
-            val checked = if (Settings.mangaDoublePage(this)) 1 else 0
-            MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.manga_layout_title)
-                .setSingleChoiceItems(R.array.manga_layout_choices, checked) { dialog, which ->
-                    Settings.setMangaDoublePage(this, which == 1)
-                    refreshLayout()
-                    dialog.dismiss()
-                }
-                .setNegativeButton(R.string.cancel, null)
-                .show()
-        }
-        refreshLayout()
-
-        findViewById<MaterialSwitch>(R.id.splitWidePagesSwitch).apply {
-            isChecked = Settings.splitWidePages(this@SettingsActivity)
-            setOnCheckedChangeListener { _, checked -> Settings.setSplitWidePages(this@SettingsActivity, checked) }
-        }
         findViewById<MaterialSwitch>(R.id.pdfHorizontalSwitch).apply {
             isChecked = Settings.pdfHorizontalPages(this@SettingsActivity)
             setOnCheckedChangeListener { _, checked -> Settings.setPdfHorizontalPages(this@SettingsActivity, checked) }

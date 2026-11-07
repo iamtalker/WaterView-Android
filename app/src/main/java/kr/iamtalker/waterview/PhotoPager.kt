@@ -26,7 +26,6 @@ internal class PhotoPager(
     private val host: Host,
     private val uriOverride: ((ChildDoc) -> Uri)? = null,
     private val rightToLeft: Boolean = false,
-    private val doublePage: Boolean = false,
     private val splitWidePages: Boolean = false,
 ) {
 
@@ -102,7 +101,7 @@ internal class PhotoPager(
     val names: List<String> get() = photos.map { it.name }
 
     /** The photo on screen. */
-    private val step get() = if (doublePage) 2 else 1
+    private val step get() = 1
     private val pageCount get() = (photos.size + step - 1) / step
     private fun firstIndex(position: Int) = (position * step).coerceIn(photos.indices)
     private fun sourceOf(photo: ChildDoc) = splitSources[photo.docId] ?: photo
@@ -270,11 +269,6 @@ internal class PhotoPager(
             // Keep the page already on screen in place. A full data-set refresh tears down every
             // decoded image; since wide scans are common, that made each page turn flash black.
             drawn?.setImage(ImageSource.uri(uri).region(firstRect))
-            if (doublePage) {
-                secondPhoto = second
-                clearStill(secondaryFrame, primary = false)
-                bindOne(second, secondaryFrame, primary = false)
-            }
             // The insertion changes how later pairs are grouped. Rebind only the pages after
             // this one so the visible pair and its already decoded first half stay undisturbed.
             val position = bindingAdapterPosition
