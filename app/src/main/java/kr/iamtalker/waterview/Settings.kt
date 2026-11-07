@@ -91,19 +91,6 @@ object Settings {
     }
 
     /** Whether PDF pages are drawn turned over. See issue #19 and `pdf.html`. */
-    /**
-     * How a reader turns the page, the same in every viewer: true for a slide (swipe sideways),
-     * false for a tap on the edge of the screen.
-     */
-    fun turnBySlide(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_TURN_SLIDE, true)
-
-    fun setTurnBySlide(context: Context, on: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_TURN_SLIDE, on) }
-    }
-
-    private const val KEY_TURN_SLIDE = "turn_by_slide"
-
     /** The paper colours a reader can choose, as hex without the #, in the order the settings list them. */
     val GROUNDS = listOf("FFFFFF", "F5EFE0", "E0E0E0", "E3EEF7")
 

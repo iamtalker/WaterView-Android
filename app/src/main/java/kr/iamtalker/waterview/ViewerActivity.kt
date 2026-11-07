@@ -1941,7 +1941,7 @@ open class ViewerActivity : AppCompatActivity() {
     /**
      * One rule for every viewer. In the middle of the screen a tap shows or hides the controls, and
      * only there: a tap at the top or bottom does nothing. On the left and right edges a tap turns the
-     * page when the reader chose taps; a slide does the turning otherwise.
+     * page; both edge taps and sideways swipes turn pages.
      */
     private fun tapAt(x: Float, y: Float, width: Int, height: Int) {
         if (width <= 0 || height <= 0) return
@@ -1949,8 +1949,8 @@ open class ViewerActivity : AppCompatActivity() {
         val fy = y / height
         val inMiddle = fy in CENTRE_LOW..CENTRE_HIGH && fx in CENTRE_LOW..CENTRE_HIGH
         when {
-            fx < EDGE_FRACTION && !Settings.turnBySlide(this) -> turnPage(forward = false)
-            fx > 1f - EDGE_FRACTION && !Settings.turnBySlide(this) -> turnPage(forward = true)
+            fx < EDGE_FRACTION -> turnPage(forward = false)
+            fx > 1f - EDGE_FRACTION -> turnPage(forward = true)
             inMiddle -> toggleReaderControls()
         }
     }
@@ -2237,12 +2237,11 @@ open class ViewerActivity : AppCompatActivity() {
         } else {
             null
         }
-        // How a page turns, the same in every viewer: a slide (a sideways swipe) or a tap on the edge.
-        // A tap in the middle always shows or hides the controls.
+        // Page turns accept both sideways swipes and edge taps. A tap in the middle shows or hides controls.
         val pageTaps = if (kind in setOf(FileKind.TEXT, FileKind.MD, FileKind.PDF, FileKind.PDF_SIMPLE)) {
             GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
                 override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
-                    if (Settings.turnBySlide(this@ViewerActivity) && e1 != null &&
+                    if (e1 != null &&
                         kotlin.math.abs(e2.x - e1.x) > kotlin.math.abs(e2.y - e1.y) &&
                         kotlin.math.abs(velocityX) > SLIDE_MIN_VELOCITY
                     ) turnPage(forward = velocityX < 0)

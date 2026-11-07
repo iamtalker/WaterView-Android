@@ -246,13 +246,6 @@
     <string name="theme_night">야간 모드</string>
     <string name="ground_title">배경색</string>
     <string name="common_settings">공통</string>
-    <string name="turn_title">넘기기 방식</string>
-    <string name="turn_slide">슬라이드 (좌우로 밀기)</string>
-    <string name="turn_tap">터치 (가장자리 누르기)</string>
-    <string-array name="turn_choices">
-        <item>@string/turn_slide</item>
-        <item>@string/turn_tap</item>
-    </string-array>
     <string-array name="ground_choices">
         <item>흰색</item>
         <item>크림</item>
