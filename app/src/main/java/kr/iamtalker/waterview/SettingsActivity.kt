@@ -43,10 +43,27 @@ class SettingsActivity : AppCompatActivity() {
             setOnCheckedChangeListener { _, checked -> Settings.setSplitWidePages(this@SettingsActivity, checked) }
         }
 
-        findViewById<MaterialSwitch>(R.id.pdfHorizontalSwitch).apply {
-            isChecked = Settings.pdfHorizontalPages(this@SettingsActivity)
-            setOnCheckedChangeListener { _, checked -> Settings.setPdfHorizontalPages(this@SettingsActivity, checked) }
+        val pdfModeRow = findViewById<View>(R.id.pdfReadingModeRow)
+        val pdfModeValue = findViewById<TextView>(R.id.pdfReadingModeValue)
+        fun refreshPdfMode() {
+            pdfModeValue.setText(
+                if (Settings.pdfHorizontalPages(this)) R.string.pdf_reading_mode_horizontal
+                else R.string.pdf_reading_mode_scroll
+            )
         }
+        pdfModeRow.setOnClickListener {
+            val checked = if (Settings.pdfHorizontalPages(this)) 1 else 0
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.pdf_reading_mode)
+                .setSingleChoiceItems(R.array.pdf_reading_mode_choices, checked) { dialog, which ->
+                    Settings.setPdfHorizontalPages(this, which == 1)
+                    refreshPdfMode()
+                    dialog.dismiss()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+        refreshPdfMode()
         findViewById<MaterialSwitch>(R.id.pdfSplitWidePagesSwitch).apply {
             isChecked = Settings.pdfSplitWidePages(this@SettingsActivity)
             setOnCheckedChangeListener { _, checked -> Settings.setPdfSplitWidePages(this@SettingsActivity, checked) }

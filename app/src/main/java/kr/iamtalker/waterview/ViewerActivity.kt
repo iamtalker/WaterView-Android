@@ -269,8 +269,8 @@ open class ViewerActivity : AppCompatActivity() {
         findViewById<View>(R.id.bottomSettings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
-        findViewById<View>(R.id.bottomPrev).setOnClickListener { turnPage(forward = false) }
-        findViewById<View>(R.id.bottomNext).setOnClickListener { turnPage(forward = true) }
+        findViewById<View>(R.id.bottomPrev).setOnClickListener { turnPage(forward = false, pageButton = true) }
+        findViewById<View>(R.id.bottomNext).setOnClickListener { turnPage(forward = true, pageButton = true) }
 
         copySource = savedInstanceState?.getString(STATE_COPY_SOURCE)?.let(Uri::parse)
         trashing = savedInstanceState?.getString(STATE_TRASHING)?.toUri()
@@ -981,8 +981,8 @@ open class ViewerActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.bottomPageCounter)?.text = getString(R.string.scroll_position, percent)
     }
 
-    /** Page controls and a confirmed side tap share this path; scrolling remains available. */
-    private fun turnPage(forward: Boolean) {
+    /** Page controls snap PDFs to a page; side taps do so when that preference is on. */
+    private fun turnPage(forward: Boolean, pageButton: Boolean = false) {
         val kind = currentKind ?: return
         val pager = photoPager
         if (pager != null && pager.count > 1) {
@@ -990,8 +990,8 @@ open class ViewerActivity : AppCompatActivity() {
             return
         }
         val web = webView ?: return
-        if (kind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE) &&
-            Settings.pdfHorizontalPages(this) && pageTotal > 1
+        if (kind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE) && pageTotal > 1 &&
+            (pageButton || Settings.pdfHorizontalPages(this))
         ) {
             tellPage(PortCommand.goToPage((pageAt + if (forward) 1 else -1).coerceIn(1, pageTotal)))
             return
