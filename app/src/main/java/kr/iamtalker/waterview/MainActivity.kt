@@ -104,6 +104,9 @@ class MainActivity : AppCompatActivity() {
      */
     private var renderToken = 0
 
+    /** Number of recent files currently shown; increased by the Recent files' Show more row. */
+    private var recentLimit = RECENTS_PAGE_SIZE
+
     /**
      * Display names for granted trees, which cost a query each and never change while
      * the grant lasts. Read and written only on [loader], so it needs no synchronising.
@@ -588,6 +591,7 @@ class MainActivity : AppCompatActivity() {
         // counts, so undoing the last one never has to bring the list back.
         if (recents.isEmpty() && roots.isEmpty()) return Screen(emptyList(), welcome = true)
         val shownRecents = recents.filter { it.uri != hidden }
+        val visibleRecents = shownRecents.take(recentLimit)
         val shownRoots = roots.filter { (perm, _) -> perm.uri.toString() != hidden }
 
         val rows = mutableListOf<Row>()
@@ -595,7 +599,7 @@ class MainActivity : AppCompatActivity() {
         if (shownRecents.isEmpty()) {
             rows += Row.Hint(getString(R.string.no_recents_hint))
         } else {
-            shownRecents.forEach { r ->
+            visibleRecents.forEach { r ->
                 val (badge, color) = badgeFor(r.name, null)
                 val ext = r.name.substringAfterLast('.', "").lowercase()
                 val uri = r.uri.toUri()
@@ -618,6 +622,12 @@ class MainActivity : AppCompatActivity() {
                     thumbUri = uri.takeIf { Thumbs.supported(FileKind.detect(ext, null), ext) },
                     thumbExt = ext
                 )
+            }
+            if (shownRecents.size > visibleRecents.size) {
+                rows += Row.Action(getString(R.string.show_more)) {
+                    recentLimit += RECENTS_PAGE_SIZE
+                    render()
+                }
             }
         }
         rows += Row.Header(getString(R.string.folders))
@@ -831,6 +841,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private companion object {
+        const val RECENTS_PAGE_SIZE = 25
         const val LICENCES_ASSET = "licences.md"
 
         /** Every extension WaterView opens, by kind. FileKindTest holds it to the extension table. */

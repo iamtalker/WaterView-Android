@@ -23,7 +23,7 @@ object Recents {
 
     private const val PREFS = "recents"
     private const val KEY = "items"
-    private const val MAX = 25
+    private const val MAX = 200
 
     fun all(context: Context): List<Entry> {
         val grants = context.contentResolver.persistedUriPermissions.filter { it.isReadPermission }

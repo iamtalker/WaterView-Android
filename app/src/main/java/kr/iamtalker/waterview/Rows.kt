@@ -20,6 +20,7 @@ import androidx.recyclerview.widget.RecyclerView
 internal sealed interface Row {
     data class Header(val title: String) : Row
     data class Hint(val text: String) : Row
+    data class Action(val title: String, val onClick: () -> Unit) : Row
     data class Item(
         val badge: String,
         val color: Int,
@@ -69,6 +70,7 @@ internal class RowAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         is Row.Header -> 0
         is Row.Hint -> 1
         is Row.Item -> 2
+        is Row.Action -> 3
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
@@ -76,6 +78,7 @@ internal class RowAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         val layout = when (viewType) {
             0 -> R.layout.row_header
             1 -> R.layout.row_hint
+            3 -> R.layout.row_action
             else -> R.layout.row_item
         }
         return object : RecyclerView.ViewHolder(inflater.inflate(layout, parent, false)) {}
@@ -89,6 +92,12 @@ internal class RowAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
                 holder.itemView.findViewById<TextView>(R.id.headerText).text = row.title
             is Row.Hint ->
                 holder.itemView.findViewById<TextView>(R.id.hintText).text = row.text
+            is Row.Action -> {
+                val action = holder.itemView.findViewById<TextView>(R.id.actionText)
+                action.text = row.title
+                holder.itemView.contentDescription = row.title
+                holder.itemView.setOnClickListener { row.onClick() }
+            }
             is Row.Item -> {
                 val badge = holder.itemView.findViewById<TextView>(R.id.badge)
                 val thumb = holder.itemView.findViewById<ImageView>(R.id.thumb)

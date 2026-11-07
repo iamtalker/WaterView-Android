@@ -39,6 +39,7 @@
     <string name="what_it_opens">PDF, 워드, 오픈도큐먼트, 엑셀, 파워포인트, 이미지, 동영상, 오디오, 마크다운, 텍스트, 전자책, ZIP 압축 파일, 3D 모델을 엽니다.</string>
     <string name="open_a_file">파일 열기</string>
     <string name="recent_files">최근 파일</string>
+    <string name="show_more">더 보기</string>
     <string name="folders">폴더</string>
     <string name="add_folder">폴더 추가</string>
     <string name="no_recents_hint">열었던 파일이 여기에 표시됩니다.</string>
