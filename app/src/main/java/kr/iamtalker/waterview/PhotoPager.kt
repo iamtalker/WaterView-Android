@@ -229,7 +229,10 @@ internal class PhotoPager(
                 }
                 var drawn: StillPhotoView? = null
                 drawn = host.still(uri, next.name, look.rotation, ready = { width, height ->
-                    if (primary && splitWidePages && !doublePage && width > height * WIDE_PAGE_RATIO &&
+                    // A wide scan is one image containing two manga pages. Split it before
+                    // pairing pages as well: otherwise double-page mode pairs two whole spreads,
+                    // squeezing four printed pages into the phone's width.
+                    if (primary && splitWidePages && width > height * WIDE_PAGE_RATIO &&
                         next.docId !in splitRegions && photo?.docId == next.docId
                     ) splitWide(next, width, height, uri, drawn)
                 }) {
@@ -264,8 +267,10 @@ internal class PhotoPager(
                 add(current + 1, second)
             }
             photo = first
-            drawn?.setImage(ImageSource.uri(uri).region(firstRect))
-            pages.notifyItemInserted(current + 1)
+            // Splitting changes the photo list that each pager item represents. In double-page
+            // mode the inserted photo is not an adapter position, so an item-inserted event here
+            // leaves the old pair on screen. Rebind from the new list so both halves are shown.
+            pages.notifyDataSetChanged()
             view.post { announce(view.currentItem) }
         }
 

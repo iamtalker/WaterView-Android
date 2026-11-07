@@ -9,7 +9,7 @@
     <string name="manga_layout_title">페이지 배치</string>
     <string name="manga_layout_single">한쪽 보기</string>
     <string name="manga_layout_double">양쪽 보기</string>
-    <string name="split_wide_pages">넓은 만화 그림을 반으로 나눠 보기</string>
+    <string name="split_wide_pages">가로로 긴 만화 그림은 반으로 나눠 보기</string>
     <string name="pdf_settings">PDF 보기</string>
     <string name="pdf_horizontal_pages">좌우로 페이지 넘기기</string>
     <string name="cancel">취소</string>
