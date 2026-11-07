@@ -267,11 +267,22 @@ internal class PhotoPager(
                 add(current + 1, second)
             }
             photo = first
-            // Splitting changes the photo list that each pager item represents. In double-page
-            // mode the inserted photo is not an adapter position, so an item-inserted event here
-            // leaves the old pair on screen. Rebind from the new list so both halves are shown.
-            pages.notifyDataSetChanged()
-            view.post { announce(view.currentItem) }
+            // Keep the page already on screen in place. A full data-set refresh tears down every
+            // decoded image; since wide scans are common, that made each page turn flash black.
+            drawn?.setImage(ImageSource.uri(uri).region(firstRect))
+            if (doublePage) {
+                secondPhoto = second
+                clearStill(secondaryFrame, primary = false)
+                bindOne(second, secondaryFrame, primary = false)
+            }
+            // The insertion changes how later pairs are grouped. Rebind only the pages after
+            // this one so the visible pair and its already decoded first half stay undisturbed.
+            val position = bindingAdapterPosition
+            val following = pageCount - position - 1
+            if (position != RecyclerView.NO_POSITION && following > 0) {
+                pages.notifyItemRangeChanged(position + 1, following)
+            }
+            view.post { if (onScreen(first)) announce(view.currentItem) }
         }
 
         private fun needsPlaying() {
