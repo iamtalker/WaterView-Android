@@ -5,7 +5,7 @@
 <!-- The policy in ViewerPolicy.kt, which says why each part is there. ViewerPolicyTest
      keeps this copy word for word the same as that one, in every page. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Text</title>
 <link rel="stylesheet" href="app.css">
 <style>
@@ -49,7 +49,7 @@
     left: 0;
     margin: 0;
     box-sizing: border-box;
-    height: calc(100vh - var(--vw-top, 0px));
+    height: calc(var(--vw-fit, 100vh) - var(--vw-top, 0px));
     column-width: calc(100vw - 28px);
     column-gap: 28px;
     column-fill: auto;

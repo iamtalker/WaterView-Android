@@ -86,6 +86,28 @@ class SettingsActivity : AppCompatActivity() {
             setOnCheckedChangeListener { _, checked -> Settings.setSplitWidePages(this@SettingsActivity, checked) }
         }
 
+        val textModeRow = findViewById<View>(R.id.textReadingModeRow)
+        val textModeValue = findViewById<TextView>(R.id.textReadingModeValue)
+        fun refreshTextMode() {
+            textModeValue.setText(
+                if (Settings.textHorizontalPages(this)) R.string.text_reading_mode_horizontal
+                else R.string.text_reading_mode_scroll
+            )
+        }
+        textModeRow.setOnClickListener {
+            val checked = if (Settings.textHorizontalPages(this)) 1 else 0
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.text_reading_mode)
+                .setSingleChoiceItems(R.array.text_reading_mode_choices, checked) { dialog, which ->
+                    Settings.setTextHorizontalPages(this, which == 1)
+                    refreshTextMode()
+                    dialog.dismiss()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+        refreshTextMode()
+
         val pdfModeRow = findViewById<View>(R.id.pdfReadingModeRow)
         val pdfModeValue = findViewById<TextView>(R.id.pdfReadingModeValue)
         fun refreshPdfMode() {

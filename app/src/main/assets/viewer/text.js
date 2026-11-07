@@ -57,6 +57,7 @@ function showPage() {
     }
 
     content.appendChild(document.createTextNode(text));
+    if (hor) vwFitHeight();
     shown += page.bytes;
     finished = page.done;
     if (page.done) {
@@ -91,7 +92,13 @@ function charsBefore(node, offset) {
 
 /* How far down the page the top of the text starts: the title bar's room, and a little more */
 function topPad() {
-  return (parseFloat(getComputedStyle(document.body).paddingTop) || 0) + 6;
+  var root = getComputedStyle(document.documentElement);
+  var contentStyle = getComputedStyle(content);
+  var top = parseFloat(root.getPropertyValue("--vw-top")) || 0;
+  var pad = hor
+    ? parseFloat(contentStyle.paddingTop) || 0
+    : parseFloat(getComputedStyle(document.body).paddingTop) || 0;
+  return (hor ? top + pad : pad) + 6;
 }
 
 /* Read from the URL: pages turn sideways, as columns, when the reader chose a sideways reading */

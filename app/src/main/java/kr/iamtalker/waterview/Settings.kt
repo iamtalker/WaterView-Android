@@ -22,6 +22,7 @@ object Settings {
     private const val KEY_MANGA_RTL = "manga_rtl"
     private const val KEY_SPLIT_WIDE_PAGES = "split_wide_pages"
     private const val KEY_PDF_HORIZONTAL = "pdf_horizontal_pages"
+    private const val KEY_TEXT_HORIZONTAL = "text_horizontal_pages"
     private const val KEY_PDF_SPLIT_WIDE = "pdf_split_wide_pages"
     private const val KEY_TEXT_REFLOW = "text_reflow"
     private const val KEY_APP_NIGHT = "app_night"
@@ -45,6 +46,15 @@ object Settings {
 
     fun setPdfHorizontalPages(context: Context, value: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_PDF_HORIZONTAL, value) }
+    }
+
+    /** Whether plain text lays out as sideways columns rather than a vertical scroll. */
+    fun textHorizontalPages(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_TEXT_HORIZONTAL, pdfHorizontalPages(context))
+
+    fun setTextHorizontalPages(context: Context, value: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_TEXT_HORIZONTAL, value) }
     }
 
     /** The app's own screen mode: true for night, false for day. Applied at start-up and on change. */

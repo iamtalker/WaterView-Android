@@ -101,8 +101,8 @@ open class ViewerActivity : AppCompatActivity() {
         const val CENTRE_LOW = 0.22f
         const val CENTRE_HIGH = 0.78f
 
-        /** How fast a swipe must go, in px a second, to turn the page as a slide. */
-        const val SLIDE_MIN_VELOCITY = 500f
+        /** How fast a swipe must go, in px a second, to turn a WebView page. */
+        const val SLIDE_MIN_VELOCITY = 250f
 
         /**
          * Opens a PDF in the simple view whatever the WebView, so that a phone pdf.js runs on can
@@ -330,19 +330,22 @@ open class ViewerActivity : AppCompatActivity() {
         val ext = name.substringAfterLast('.', "").lowercase()
         val mime = runCatching { contentResolver.getType(uri) }.getOrNull() ?: intent.type
 
-        // Picker selections carry a persistable grant; keep those in Recents.
-        // Open-with and folder-browsed URIs throw here and are simply skipped. A file
+        // Picker selections carry a persistable document grant, while files opened from an added
+        // folder inherit its persisted tree grant. Record either kind in Recents; entries whose
+        // grant later disappears are filtered when the home screen is drawn. A file
         // inside a zip would too, but is kept out by name rather than by that: nothing
         // in a zip is written to the phone, and Recents is on the phone. Only from
         // WaterView's own screens, which is where the picker is: another app offering a
         // persistable grant would otherwise get an entry, under a name of its choosing.
         if (fromWaterView && uri.scheme == "content" && !ArchiveProvider.isEntry(this, uri)) {
-            runCatching {
-                contentResolver.takePersistableUriPermission(
-                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-                Recents.add(this, uri, name)
+            if (!DocumentsContract.isTreeUri(uri)) {
+                runCatching {
+                    contentResolver.takePersistableUriPermission(
+                        uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
             }
+            Recents.add(this, uri, name)
         }
 
         fun show(kind: FileKind) {
@@ -810,6 +813,7 @@ open class ViewerActivity : AppCompatActivity() {
     private var appliedMangaConfig: MangaConfig? = null
     private var appliedPdfSplitWide: Boolean? = null
     private var appliedPdfHorizontal: Boolean? = null
+    private var appliedTextHorizontal: Boolean? = null
 
     private fun mangaConfig() = MangaConfig(
         Settings.mangaRightToLeft(this),
@@ -819,6 +823,8 @@ open class ViewerActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (appliedMangaConfig?.let { it != mangaConfig() } == true ||
+            (currentKind == FileKind.TEXT &&
+                appliedTextHorizontal?.let { it != Settings.textHorizontalPages(this) } == true) ||
             (currentKind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE) &&
                 (appliedPdfSplitWide?.let { it != Settings.pdfSplitWidePages(this) } == true ||
                     appliedPdfHorizontal?.let { it != Settings.pdfHorizontalPages(this) } == true))
@@ -1080,7 +1086,7 @@ open class ViewerActivity : AppCompatActivity() {
             return
         }
         // Sideways reading turns a screen's width of columns at a time
-        if (kind == FileKind.TEXT && Settings.pdfHorizontalPages(this)) {
+        if (kind == FileKind.TEXT && Settings.textHorizontalPages(this)) {
             web.scrollBy(if (forward) web.width else -web.width, 0)
             return
         }
@@ -2065,6 +2071,7 @@ open class ViewerActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     private fun showWeb(container: FrameLayout, uri: Uri, kind: FileKind, name: String, ext: String) {
+        if (kind == FileKind.TEXT) appliedTextHorizontal = Settings.textHorizontalPages(this)
         if (kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE) {
             appliedPdfSplitWide = Settings.pdfSplitWidePages(this)
             appliedPdfHorizontal = Settings.pdfHorizontalPages(this)
@@ -2086,11 +2093,13 @@ open class ViewerActivity : AppCompatActivity() {
             // document it is only a place for script that should never have run to leave
             // something behind for the next document to find.
             domStorageEnabled = false
-            builtInZoomControls = true
+            builtInZoomControls = kind != FileKind.TEXT
             displayZoomControls = false
-            setSupportZoom(true)
+            setSupportZoom(kind != FileKind.TEXT)
             useWideViewPort = true
-            loadWithOverviewMode = true
+            // Horizontal text intentionally overflows to later columns. Overview mode can
+            // shrink the whole run of columns to fit, leaving the first page tiny with large margins.
+            loadWithOverviewMode = kind != FileKind.TEXT
             allowFileAccess = false
             allowContentAccess = false
             /*
@@ -2333,7 +2342,7 @@ open class ViewerActivity : AppCompatActivity() {
                     (placeAt?.let { "&at=${it.chapter}.${it.past}" } ?: "") +
                     (markAt?.let { "&mark=$it" } ?: "") +
                     (if (kind == FileKind.TEXT && Settings.textReflow(this)) "&reflow=1" else "") +
-                    (if (kind == FileKind.TEXT && Settings.pdfHorizontalPages(this)) "&hor=1" else "") +
+                    (if (kind == FileKind.TEXT && Settings.textHorizontalPages(this)) "&hor=1" else "") +
                     // The zoom the phone itself asks for, which a book's page keeps its
                     // own words at whatever size the reader gives the book's, and a sheet
                     // opens zoomed to

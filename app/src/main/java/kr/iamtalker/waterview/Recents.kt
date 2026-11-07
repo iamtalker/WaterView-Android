@@ -3,17 +3,19 @@ package kr.iamtalker.waterview
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Recently opened files, limited to URIs whose read grant was persisted
- * (picker selections). Stored as JSON in SharedPreferences.
+ * Recently opened files that remain readable through either a persisted document grant
+ * (picker selections) or the persisted tree grant of a WaterView folder. Stored as JSON in
+ * SharedPreferences.
  *
- * The grant goes when the entry does, whether it is removed or pushed off the
- * end, since nothing else opens a file by it.
+ * A document grant owned by this list goes when the entry does. A folder grant remains
+ * owned by the folder list, even when one of its recent files is removed.
  */
 object Recents {
 
@@ -24,11 +26,11 @@ object Recents {
     private const val MAX = 25
 
     fun all(context: Context): List<Entry> {
-        val granted = context.contentResolver.persistedUriPermissions
-            .filter { it.isReadPermission }
-            .map { it.uri.toString() }
-            .toSet()
-        return load(context).filter { it.uri in granted }
+        val grants = context.contentResolver.persistedUriPermissions.filter { it.isReadPermission }
+        val granted = grants.map { it.uri.toString() }.toSet()
+        return load(context).filter { entry ->
+            entry.uri in granted || hasPersistedTreeAccess(entry.uri.toUri(), grants)
+        }
     }
 
     fun add(context: Context, uri: Uri, name: String) {
@@ -44,16 +46,26 @@ object Recents {
         release(context, uri)
     }
 
-    /**
-     * Gives back the grant on [uri], write as well as read: a build that could rename a picked
-     * file took both, and giving back only the read half left the other behind, where the list,
-     * which shows read grants only, could never reach it again. Android throws for a grant that
-     * is already gone, and that is the same outcome.
-     */
+    /** A file opened from an added folder inherits its persisted tree grant, not a file grant. */
+    private fun hasPersistedTreeAccess(
+        uri: Uri,
+        grants: List<android.content.UriPermission>,
+    ): Boolean {
+        if (!DocumentsContract.isTreeUri(uri)) return false
+        val treeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: return false
+        return grants.any { permission ->
+            permission.uri.authority == uri.authority && DocumentsContract.isTreeUri(permission.uri) &&
+                runCatching { DocumentsContract.getTreeDocumentId(permission.uri) == treeId }.getOrDefault(false)
+        }
+    }
+
+    /** Gives back a document grant owned by this entry, never a parent folder's tree grant. */
     private fun release(context: Context, uri: String) {
+        val target = uri.toUri()
+        if (context.contentResolver.persistedUriPermissions.none { it.uri == target }) return
         runCatching {
             context.contentResolver.releasePersistableUriPermission(
-                uri.toUri(),
+                target,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
         }
