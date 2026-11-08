@@ -107,7 +107,11 @@ internal class DocumentChrome(
     }
 
     /** Shows or hides the title bar when the reader taps the middle of a PDF page. */
-    fun setReaderVisible(visible: Boolean) = show(visible)
+    private var readerVisible = true
+    fun setReaderVisible(visible: Boolean) {
+        readerVisible = visible
+        show(visible)
+    }
 
     /** Brings the whole bar back, for when the document is at its top and no scroll has said so. */
     fun reveal() = show(true)
@@ -192,6 +196,10 @@ internal class DocumentChrome(
     /** The document moved from [oldY] to [y]. */
     fun scrolled(y: Int, oldY: Int) {
         // A pinch moves the document about as it zooms, which is not the reader going anywhere
+        // Full screen pins the reader's own chrome away. Otherwise scrolling back to the top or
+        // steering upwards could reveal only the title bar while the position bar and system bars
+        // stayed hidden.
+        if (!readerVisible) return
         if (steering && fingers <= 1) {
             if (fingers == 0) quietAfter()
             follow(y - oldY)
