@@ -95,7 +95,7 @@ open class ViewerActivity : AppCompatActivity() {
         private const val STATE_TURNS = "turns"
 
         /** The share of a screen's width at each side that a tap turns the page, when taps turn pages. */
-        const val EDGE_FRACTION = 0.22f
+        const val EDGE_FRACTION = 0.28f
 
         /** The middle of the screen, where a tap shows or hides the controls: the middle 56% each way. */
         const val CENTRE_LOW = 0.22f
@@ -1993,10 +1993,13 @@ open class ViewerActivity : AppCompatActivity() {
         if (width <= 0 || height <= 0) return
         val fx = x / width
         val fy = y / height
-        val inMiddle = fy in CENTRE_LOW..CENTRE_HIGH && fx in CENTRE_LOW..CENTRE_HIGH
+        val edgeFraction = Settings.tapEdgePercent(this) / 100f
+        val centreLow = (1f - edgeFraction * 2f) / 2f
+        val centreHigh = 1f - centreLow
+        val inMiddle = fy in CENTRE_LOW..CENTRE_HIGH && fx in centreLow..centreHigh
         when {
-            fx < EDGE_FRACTION -> turnPage(forward = false)
-            fx > 1f - EDGE_FRACTION -> turnPage(forward = true)
+            fx < edgeFraction -> turnPage(forward = false)
+            fx > 1f - edgeFraction -> turnPage(forward = true)
             inMiddle -> toggleReaderControls()
         }
     }
@@ -2302,6 +2305,7 @@ open class ViewerActivity : AppCompatActivity() {
         val pageTaps = if (kind in setOf(FileKind.TEXT, FileKind.MD, FileKind.PDF, FileKind.PDF_SIMPLE)) {
             GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
                 override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                    if (kind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE) && Settings.pdfHorizontalPages(this@ViewerActivity)) return false
                     if (kind != FileKind.TEXT || !Settings.textHorizontalPages(this@ViewerActivity)) {
                         if (e1 != null &&
                             kotlin.math.abs(e2.x - e1.x) > kotlin.math.abs(e2.y - e1.y) &&
@@ -2330,7 +2334,8 @@ open class ViewerActivity : AppCompatActivity() {
             pictureTaps?.onTouchEvent(event)
             pageTaps?.onTouchEvent(event)
             val pagedText = kind == FileKind.TEXT && Settings.textHorizontalPages(this)
-            if (!pagedText) return@setOnTouchListener false
+            val pagedPdf = kind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE) && Settings.pdfHorizontalPages(this)
+            if (!pagedText && !pagedPdf) return@setOnTouchListener false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     textSwipeStartX = event.x

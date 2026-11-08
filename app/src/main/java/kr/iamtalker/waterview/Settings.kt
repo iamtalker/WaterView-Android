@@ -27,6 +27,18 @@ object Settings {
     private const val KEY_PDF_SPLIT_WIDE = "pdf_split_wide_pages"
     private const val KEY_TEXT_REFLOW = "text_reflow"
     private const val KEY_APP_NIGHT = "app_night"
+    private const val KEY_TAP_EDGE = "tap_edge_percent"
+
+    val TAP_EDGE_CHOICES = intArrayOf(22, 28, 34, 40)
+
+    fun tapEdgePercent(context: Context): Int {
+        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_TAP_EDGE, 28)
+        return if (saved in TAP_EDGE_CHOICES) saved else 28
+    }
+
+    fun setTapEdgePercent(context: Context, percent: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putInt(KEY_TAP_EDGE, percent) }
+    }
 
     fun mangaRightToLeft(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_MANGA_RTL, false)

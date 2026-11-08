@@ -23,6 +23,8 @@
     <string name="page_of_total">%1$d / %2$d</string>
     <string name="settings">설정</string>
     <string name="reading_settings_detail">만화와 문서의 읽기 방식</string>
+    <string name="tap_edge_title">페이지 넘김 터치 영역</string>
+    <string name="tap_edge_percent">화면 양쪽 %1$d%%</string>
     <!-- About's opening line. It names the main kinds only, since the File types row below it
          lists every one. -->
     <string name="main_subtitle">문서, 스프레드시트, 프레젠테이션, 사진, 동영상, 오디오 등 다양한 파일을 엽니다. 파일은 기기에서 처리하며 외부로 전송하지 않습니다.</string>
@@ -262,6 +264,12 @@
     <string-array name="theme_choices">
         <item>@string/theme_day</item>
         <item>@string/theme_night</item>
+    </string-array>
+    <string-array name="tap_edge_choices">
+        <item>22%</item>
+        <item>28%</item>
+        <item>34%</item>
+        <item>40%</item>
     </string-array>
     <string-array name="pdf_reading_mode_choices">
         <item>@string/pdf_reading_mode_scroll</item>

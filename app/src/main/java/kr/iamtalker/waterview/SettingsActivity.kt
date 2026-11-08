@@ -59,6 +59,26 @@ class SettingsActivity : AppCompatActivity() {
         }
         refreshTheme()
 
+        val tapEdgeRow = findViewById<View>(R.id.tapEdgeRow)
+        val tapEdgeValue = findViewById<TextView>(R.id.tapEdgeValue)
+        fun refreshTapEdge() {
+            tapEdgeValue.text = getString(R.string.tap_edge_percent, Settings.tapEdgePercent(this))
+        }
+        tapEdgeRow.setOnClickListener {
+            val choices = Settings.TAP_EDGE_CHOICES
+            val checked = choices.indexOf(Settings.tapEdgePercent(this)).coerceAtLeast(0)
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.tap_edge_title)
+                .setSingleChoiceItems(R.array.tap_edge_choices, checked) { dialog, which ->
+                    Settings.setTapEdgePercent(this, choices[which])
+                    refreshTapEdge()
+                    dialog.dismiss()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+        refreshTapEdge()
+
         val direction = findViewById<View>(R.id.mangaDirectionRow)
         val directionValue = findViewById<TextView>(R.id.mangaDirectionValue)
         fun refreshDirection() {
