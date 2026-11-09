@@ -2912,7 +2912,7 @@ open class ViewerActivity : AppCompatActivity() {
     /** Opens the file at [index] of the folder this one came from, in place of this one. */
     /** Whether the page on show is the last of its document: a photo, or a PDF page. */
     private fun atLastPage(): Boolean {
-        photoPager?.let { return it.count > 0 && it.currentIndex >= it.count - 1 }
+        photoPager?.let { return it.count > 0 && it.onLastPage }
         val kind = currentKind
         return (kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE) && pageTotal > 0 && pageAt >= pageTotal
     }

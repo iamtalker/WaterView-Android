@@ -7,6 +7,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.text.Spannable
 import android.text.SpannableString
+import android.text.StaticLayout
+import android.text.TextPaint
 import android.text.style.BackgroundColorSpan
 import android.view.Gravity
 import android.view.MotionEvent
@@ -54,6 +56,10 @@ class TextReaderActivity : AppCompatActivity() {
 
     private var text: String = ""
     private var starts = IntArray(0)
+    /** Where each page starts, for the screen size and text size it was measured at. See ensurePages. */
+    private var pageStarts = IntArray(0)
+    private var pagesFor: Pair<Int, Float>? = null
+    private val WINDOW = 4000
     private var key: String? = null
     private var highlight: IntRange? = null
     private var readAloud: ReadAloud? = null
@@ -196,8 +202,8 @@ class TextReaderActivity : AppCompatActivity() {
     /** Whether the last of the text is on the screen. */
     private fun atEnd(): Boolean {
         if (starts.isEmpty()) return false
-        val last = (list.layoutManager as LinearLayoutManager).findLastCompletelyVisibleItemPosition()
-        return last >= starts.size - 1
+        // The list cannot scroll any further down: a last piece taller than the screen is never fully visible
+        return !list.canScrollVertically(1)
     }
 
     /** Opens the file after this one in the folder it was opened from. Nothing happens when there is none. */
@@ -264,9 +270,12 @@ class TextReaderActivity : AppCompatActivity() {
                 starts = pieceStarts(decoded)
                 key = bytes?.let { Positions.keyFor(contentResolver, source, it.size.toLong()) }
                 adapter.notifyDataSetChanged()
-                val left = key?.let { Marks.leftAt(this, it) }
-                if (left != null && left in 0 until text.length.toLong()) jumpTo(left)
-                else showPosition()
+                // The pages are measured first, so the place it was left at is found with the same page count
+                ensurePages {
+                    val left = key?.let { Marks.leftAt(this, it) }
+                    if (left != null && left in 0 until text.length.toLong()) jumpTo(left)
+                    else showPosition()
+                }
                 if ((bytes?.size?.toLong() ?: 0L) >= MAX_BYTES) {
                     Toast.makeText(this, getString(R.string.text_truncated, MAX_BYTES / (1024 * 1024)), Toast.LENGTH_LONG).show()
                 }
@@ -331,12 +340,77 @@ class TextReaderActivity : AppCompatActivity() {
     }
 
     /** The screen the text is on, and how many screens the whole text makes, a screen counting as a page. */
+    /**
+     * Where each page starts, for the size of the screen and the text size: as many whole lines as fit
+     * on a screen, measured once here so the page count is the same every time it is shown. Done off the
+     * main thread; [then] runs on it once the pages are known, and again if the size changes.
+     */
+    private fun ensurePages(then: () -> Unit) {
+        val width = list.width - dp(32)
+        val height = list.height - dp(16)
+        if (width <= 0 || height <= 0) {
+            list.post { ensurePages(then) }
+            return
+        }
+        if (pagesFor == Pair(width, textSizeSp) && pageStarts.isNotEmpty()) {
+            then()
+            return
+        }
+        val snapshot = text
+        val size = textSizeSp
+        loader.execute {
+            val breaks = computePages(snapshot, width, height, size)
+            runOnUiThread {
+                if (isDestroyed || snapshot != text) return@runOnUiThread
+                pageStarts = breaks
+                pagesFor = Pair(width, size)
+                then()
+            }
+        }
+    }
+
+    /** Where each page starts: as many whole lines as fit in [height], measured a window at a time. */
+    private fun computePages(s: String, width: Int, height: Int, size: Float): IntArray {
+        val paint = TextPaint().apply {
+            textSize = android.util.TypedValue.applyDimension(
+                android.util.TypedValue.COMPLEX_UNIT_SP, size, resources.displayMetrics
+            )
+            typeface = Typeface.MONOSPACE
+        }
+        val out = ArrayList<Int>()
+        var at = 0
+        while (at < s.length) {
+            out.add(at)
+            val windowEnd = minOf(s.length, at + WINDOW)
+            val layout = StaticLayout.Builder.obtain(s, at, windowEnd, paint, width).setIncludePad(false).build()
+            var fit = 0
+            for (line in 0 until layout.lineCount) {
+                if (layout.getLineBottom(line) > height) break
+                fit = line
+            }
+            var end = layout.getLineEnd(fit)
+            if (end <= at) end = minOf(windowEnd, at + 1)
+            at = end
+        }
+        return out.toIntArray()
+    }
+
+    /** The last of [points] at or before [offset], by a search, so a page or piece is found in a few steps. */
+    private fun indexAtOrBefore(points: IntArray, offset: Int): Int {
+        if (points.isEmpty()) return 0
+        var lo = 0
+        var hi = points.size - 1
+        while (lo < hi) {
+            val mid = (lo + hi + 1) / 2
+            if (points[mid] <= offset) lo = mid else hi = mid - 1
+        }
+        return lo
+    }
+
     private fun screenPages(): Pair<Int, Int> {
-        val h = list.height.coerceAtLeast(1)
-        val range = list.computeVerticalScrollRange().coerceAtLeast(h)
-        val total = (range + h - 1) / h
-        val current = (list.computeVerticalScrollOffset() / h + 1).coerceIn(1, total)
-        return Pair(current, total)
+        // Fixed once per text size from the screen's size (see ensurePages), so the total does not drift
+        if (pageStarts.isEmpty()) return Pair(1, 1)
+        return Pair(indexAtOrBefore(pageStarts, topOffset()) + 1, pageStarts.size)
     }
 
     private fun jumpTo(offset: Long) {
@@ -466,9 +540,8 @@ class TextReaderActivity : AppCompatActivity() {
             .setPositiveButton(R.string.go) { _, _ ->
                 val p = entry.text.toString().toIntOrNull()
                 if (p != null && p in 1..total) {
-                    // Place the page by its share of the whole, which the list's own length measures
-                    val share = if (total > 1) (p - 1).toDouble() / (total - 1) else 0.0
-                    jumpTo((text.length * share).toLong())
+                    // The page's own start, as measured for this screen
+                    jumpTo(pageStarts.getOrElse(p - 1) { 0 }.toLong())
                 } else {
                     Toast.makeText(this, getString(R.string.page_range, total), Toast.LENGTH_SHORT).show()
                 }
@@ -487,6 +560,8 @@ class TextReaderActivity : AppCompatActivity() {
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit().putFloat(KEY_SIZE, textSizeSp).apply()
                 adapter.size = textSizeSp
                 adapter.notifyDataSetChanged()
+                val at = topOffset().toLong()
+                ensurePages { jumpTo(at) }
             }
             .show()
     }
@@ -513,6 +588,7 @@ class TextReaderActivity : AppCompatActivity() {
             textSizeSp = size
             adapter.size = size
             adapter.notifyDataSetChanged()
+            ensurePages { showPosition() }
         }
     }
 

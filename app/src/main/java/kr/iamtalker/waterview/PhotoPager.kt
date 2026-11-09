@@ -91,6 +91,9 @@ internal class PhotoPager(
 
     val count: Int get() = photos.size
 
+    /** Whether the page on show is the last one in the list the pager holds. */
+    val onLastPage: Boolean get() = view.currentItem >= (view.adapter?.itemCount ?: 0) - 1
+
     fun previous() {
         if (view.currentItem > 0) view.setCurrentItem(view.currentItem - 1, true)
     }
