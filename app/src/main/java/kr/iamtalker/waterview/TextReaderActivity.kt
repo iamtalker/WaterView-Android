@@ -58,6 +58,10 @@ class TextReaderActivity : AppCompatActivity() {
     private var text: String = ""
     /** Where each page starts, for the screen size and text size it was measured at. See ensurePages. */
     private var pageStarts = IntArray(0)
+    /** Whether [pageStarts] covers the whole text. Until then the list shows the start, and the count is not final. */
+    private var pagesReady = false
+    /** A place to go to that is not measured yet, taken once it is. */
+    private var pendingJump: Long? = null
     private var pagesFor: Pair<Int, Float>? = null
     private val WINDOW = 4000
     private var key: String? = null
@@ -219,7 +223,8 @@ class TextReaderActivity : AppCompatActivity() {
 
     /** Whether the page on the screen is the last one. */
     private fun atEnd(): Boolean {
-        if (pageStarts.isEmpty()) return false
+        // Not the end until every page is measured: a partly measured text would end early
+        if (!pagesReady || pageStarts.isEmpty()) return false
         return currentPageIndex() >= pageStarts.size - 1
     }
 
@@ -326,7 +331,11 @@ class TextReaderActivity : AppCompatActivity() {
         if (!seeking) seek.progress = fraction.toInt()
         val (current, total) = screenPages()
         // No pages yet while they are measured: say so rather than show a count that is wrong
-        percent.text = if (total == 0) "… / …" else "$current / $total"
+        percent.text = when {
+            total == 0 -> "… / …"
+            !pagesReady -> "$current / …"
+            else -> "$current / $total"
+        }
     }
 
     /** The screen the text is on, and how many screens the whole text makes, a screen counting as a page. */
@@ -342,7 +351,7 @@ class TextReaderActivity : AppCompatActivity() {
             list.post { ensurePages(then) }
             return
         }
-        if (pagesFor == Pair(width, textSizeSp) && pageStarts.isNotEmpty()) {
+        if (pagesReady && pagesFor == Pair(width, textSizeSp) && pageStarts.isNotEmpty()) {
             then()
             return
         }
@@ -354,12 +363,31 @@ class TextReaderActivity : AppCompatActivity() {
             pageStarts = PageCache.starts
             adapter.notifyDataSetChanged()
             pagesFor = Pair(width, size)
+            pagesReady = true
             then()
             return
         }
+        pagesReady = false
+        var shownFirst = false
         pager.execute {
             Diag.log(this, "text: pages start chars=${snapshot.length} w=$width h=$height size=$size")
-            val breaks = runCatching { computePages(snapshot, width, height, size) }
+            val breaks = runCatching {
+                computePages(snapshot, width, height, size) { partial ->
+                    // Shown as they come, so the start of a long text is there at once
+                    runOnUiThread {
+                        if (isDestroyed || snapshot != text || pagesReady) return@runOnUiThread
+                        pageStarts = partial
+                        adapter.notifyDataSetChanged()
+                        pagesFor = Pair(width, size)
+                        if (!shownFirst) {
+                            shownFirst = true
+                            then()
+                        } else {
+                            showPosition()
+                        }
+                    }
+                }
+            }
                 .onFailure { Diag.log(this, "text: pages failed ${it.javaClass.simpleName} ${it.message}") }
                 .getOrDefault(IntArray(0))
             Diag.log(this, "text: pages done count=${breaks.size}")
@@ -376,13 +404,21 @@ class TextReaderActivity : AppCompatActivity() {
                 pageStarts = breaks
                 adapter.notifyDataSetChanged()
                 pagesFor = Pair(width, size)
-                then()
+                pagesReady = true
+                if (!shownFirst) {
+                    shownFirst = true
+                    then()
+                } else {
+                    val jump = pendingJump
+                    pendingJump = null
+                    if (jump != null) jumpTo(jump) else showPosition()
+                }
             }
         }
     }
 
     /** Where each page starts: as many whole lines as fit in [height], measured a window at a time. */
-    private fun computePages(s: String, width: Int, height: Int, size: Float): IntArray {
+    private fun computePages(s: String, width: Int, height: Int, size: Float, publish: (IntArray) -> Unit): IntArray {
         // Measured with the same paint and font padding as the TextView that draws the page, so a page
         // measured here fills the same screen on any phone's font
         val sample = TextView(this).apply {
@@ -395,6 +431,7 @@ class TextReaderActivity : AppCompatActivity() {
         var at = 0
         while (at < s.length) {
             out.add(at)
+            if (out.size % 200 == 0) publish(out.toIntArray())
             val windowEnd = minOf(s.length, at + WINDOW)
             val layout = StaticLayout.Builder.obtain(s, at, windowEnd, paint, width).setIncludePad(includePad).build()
             var fit = 0
@@ -433,6 +470,12 @@ class TextReaderActivity : AppCompatActivity() {
     private fun jumpTo(offset: Long) {
         if (pageStarts.isEmpty()) return
         val at = offset.coerceIn(0, text.length.toLong() - 1).toInt()
+        // Not measured that far yet: wait for the rest of the pages, then go there
+        if (!pagesReady && at >= pageStarts.last()) {
+            pendingJump = offset
+            showPosition()
+            return
+        }
         // The page holding that character; the list snaps to whole pages
         list.scrollToPosition(indexAtOrBefore(pageStarts, at))
         // The readout is drawn again once the list has laid the page out, not from before it did
