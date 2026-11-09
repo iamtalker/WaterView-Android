@@ -177,6 +177,7 @@ class TextReaderActivity : AppCompatActivity() {
 
         // One page per item: the list settles on a whole page after each move
         PagerSnapHelper().attachToRecyclerView(list)
+        list.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (!seeking) showPosition() }
         list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 if (!seeking) showPosition()
@@ -382,18 +383,20 @@ class TextReaderActivity : AppCompatActivity() {
 
     /** Where each page starts: as many whole lines as fit in [height], measured a window at a time. */
     private fun computePages(s: String, width: Int, height: Int, size: Float): IntArray {
-        val paint = TextPaint().apply {
-            textSize = android.util.TypedValue.applyDimension(
-                android.util.TypedValue.COMPLEX_UNIT_SP, size, resources.displayMetrics
-            )
-            typeface = Typeface.MONOSPACE
+        // Measured with the same paint and font padding as the TextView that draws the page, so a page
+        // measured here fills the same screen on any phone's font
+        val sample = TextView(this).apply {
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            textSize = size
         }
+        val paint = sample.paint
+        val includePad = sample.includeFontPadding
         val out = ArrayList<Int>()
         var at = 0
         while (at < s.length) {
             out.add(at)
             val windowEnd = minOf(s.length, at + WINDOW)
-            val layout = StaticLayout.Builder.obtain(s, at, windowEnd, paint, width).setIncludePad(false).build()
+            val layout = StaticLayout.Builder.obtain(s, at, windowEnd, paint, width).setIncludePad(includePad).build()
             var fit = 0
             for (line in 0 until layout.lineCount) {
                 if (layout.getLineBottom(line) > height) break
@@ -432,6 +435,8 @@ class TextReaderActivity : AppCompatActivity() {
         val at = offset.coerceIn(0, text.length.toLong() - 1).toInt()
         // The page holding that character; the list snaps to whole pages
         list.scrollToPosition(indexAtOrBefore(pageStarts, at))
+        // The readout is drawn again once the list has laid the page out, not from before it did
+        list.post { showPosition() }
         showPosition()
     }
 
