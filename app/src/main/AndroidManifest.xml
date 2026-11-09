@@ -7,14 +7,10 @@
     <!-- Shows a notice when a newer WaterView is out (Android 13 and later asks the reader once). See UpdateNotice. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- No permissions at all: files arrive via SAF or Open-with grants, rendering is fully offline.
-         A folder of a photo opened from outside is granted by the user, one folder at a time, in the
-         system picker, so no storage permission is asked for. Media3 contributes ACCESS_NETWORK_STATE
-         for streaming bitrate choice, stripped below because WaterView only ever plays local files.
-         The checkPermissions task fails the build on any others. -->
-    <uses-permission
-        android:name="android.permission.ACCESS_NETWORK_STATE"
-        tools:node="remove" />
+    <!-- No storage permission: files arrive via SAF or Open-with grants, and a folder of a photo opened
+         from outside is granted by the user, one folder at a time, in the system picker. ACCESS_NETWORK_STATE
+         is kept for WorkManager's daily update check, which only reads whether a network is there; no data
+         is sent with it. The checkPermissions task fails the build on any others. -->
 
     <!-- Auto Backup is off because the only thing it could copy is worthless. The recents
          list is SAF content URIs, and Recents.all filters every entry against

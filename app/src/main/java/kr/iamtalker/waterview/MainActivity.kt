@@ -133,6 +133,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         askForNotificationsOnce()
         lifecycleScope.launch { UpdateNotice.checkDaily(this@MainActivity) }
+        UpdateWorker.schedule(this)
         openUpdateFromNotice(intent)
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.root)) { v, insets ->
             val bars = insets.getInsets(

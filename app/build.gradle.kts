@@ -13,8 +13,8 @@ android {
         applicationId = "kr.iamtalker.waterview"
         minSdk = 26
         targetSdk = 36
-        versionCode = 30
-        versionName = "0.2.27"
+        versionCode = 31
+        versionName = "0.2.28"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // A device test that hangs blocks the whole nightly run behind it, and
@@ -184,6 +184,13 @@ val permissionAllowlistSuffixes = setOf(
     "android.permission.REQUEST_INSTALL_PACKAGES",
     // Shows a notice when a newer version is out. Asked once, on Android 13 and later. See UpdateNotice.
     "android.permission.POST_NOTIFICATIONS",
+    // WorkManager's own: a normal permission given at install, never asked for. It keeps the daily
+    // update check running and rescheduled after a restart. See UpdateWorker.
+    "android.permission.WAKE_LOCK",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "android.permission.FOREGROUND_SERVICE",
+    // Reads whether a network is there, for the daily update check. Only reads state; nothing is sent.
+    "android.permission.ACCESS_NETWORK_STATE",
     // androidx.core declares this so libraries can registerReceiver(..., RECEIVER_NOT_EXPORTED).
     // Signature level and self-granted, so it is never shown to the user as a permission.
     ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
@@ -198,6 +205,10 @@ val exportedAllowlist = setOf(
     "kr.iamtalker.waterview.ViewerActivity",
     // Only a sender holding android.permission.DUMP, the shell's, can reach it
     "androidx.profileinstaller.ProfileInstallReceiver",
+    // WorkManager's job service, which only the system can bind: it is guarded by BIND_JOB_SERVICE
+    "androidx.work.impl.background.systemjob.SystemJobService",
+    // WorkManager's diagnostics, which only a sender holding android.permission.DUMP can reach
+    "androidx.work.impl.diagnostics.DiagnosticsReceiver",
     // Debug builds only, from src/debug: the PDF renderer's spike, which adb hands a document to
     "kr.iamtalker.waterview.PdfSpikeActivity",
 )
@@ -276,6 +287,8 @@ androidComponents.onVariants { variant ->
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
+    // The daily check for a newer release, which runs while the app is closed. See UpdateWorker.
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("com.google.android.material:material:1.14.0")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
