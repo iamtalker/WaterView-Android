@@ -268,6 +268,7 @@ class TextReaderActivity : AppCompatActivity() {
                 }
                 text = decoded
                 starts = pieceStarts(decoded)
+                Diag.log(this, "text: opened chars=${decoded.length} pieces=${starts.size} bytes=${bytes?.size}")
                 key = bytes?.let { Positions.keyFor(contentResolver, source, it.size.toLong()) }
                 adapter.notifyDataSetChanged()
                 // The pages are measured first, so the place it was left at is found with the same page count
@@ -359,9 +360,16 @@ class TextReaderActivity : AppCompatActivity() {
         val snapshot = text
         val size = textSizeSp
         loader.execute {
-            val breaks = computePages(snapshot, width, height, size)
+            Diag.log(this, "text: pages start chars=${snapshot.length} w=$width h=$height size=$size")
+            val breaks = runCatching { computePages(snapshot, width, height, size) }
+                .onFailure { Diag.log(this, "text: pages failed ${it.javaClass.simpleName} ${it.message}") }
+                .getOrDefault(IntArray(0))
+            Diag.log(this, "text: pages done count=${breaks.size}")
             runOnUiThread {
-                if (isDestroyed || snapshot != text) return@runOnUiThread
+                if (isDestroyed || snapshot != text) {
+                    Diag.log(this, "text: pages dropped destroyed=$isDestroyed changed=${snapshot != text}")
+                    return@runOnUiThread
+                }
                 pageStarts = breaks
                 pagesFor = Pair(width, size)
                 then()

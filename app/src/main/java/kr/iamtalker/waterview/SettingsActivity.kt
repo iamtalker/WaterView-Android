@@ -150,6 +150,17 @@ class SettingsActivity : AppCompatActivity() {
         }
         refreshTextSize()
 
+        // The diagnostic log of the text screen: shown here, or cleared, and nowhere else
+        findViewById<View>(R.id.diagRow).setOnClickListener {
+            val log = Diag.read(this).ifBlank { getString(R.string.diagnostics_empty) }
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.diagnostics_title)
+                .setMessage(log.takeLast(6000))
+                .setPositiveButton(android.R.string.ok, null)
+                .setNeutralButton(R.string.diagnostics_clear) { _, _ -> Diag.clear(this) }
+                .show()
+        }
+
         val pdfModeRow = findViewById<View>(R.id.pdfReadingModeRow)
         val pdfModeValue = findViewById<TextView>(R.id.pdfReadingModeValue)
         fun refreshPdfMode() {
