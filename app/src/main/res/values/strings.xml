@@ -172,6 +172,8 @@
     <string name="diagnostics_detail">문제가 생겼을 때 원인을 찾기 위한 기록입니다. 눌러서 보고 지울 수 있습니다.</string>
     <string name="diagnostics_empty">기록이 없습니다.</string>
     <string name="diagnostics_clear">지우기</string>
+    <string name="diagnostics_copy">복사</string>
+    <string name="diagnostics_copied">진단 기록을 복사했습니다.</string>
     <string name="pdf_zoom">PDF 페이지 확대</string>
     <string name="pdf_zoom_spoken">PDF 페이지 확대 %1$d%%</string>
     <!-- The two buttons show a small and a large letter. A screen reader says these. -->

@@ -152,12 +152,19 @@ class SettingsActivity : AppCompatActivity() {
 
         // The diagnostic log of the text screen: shown here, or cleared, and nowhere else
         findViewById<View>(R.id.diagRow).setOnClickListener {
-            val log = Diag.read(this).ifBlank { getString(R.string.diagnostics_empty) }
+            val full = Diag.read(this)
+            val log = full.ifBlank { getString(R.string.diagnostics_empty) }
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.diagnostics_title)
                 .setMessage(log.takeLast(6000))
                 .setPositiveButton(android.R.string.ok, null)
                 .setNeutralButton(R.string.diagnostics_clear) { _, _ -> Diag.clear(this) }
+                .setNegativeButton(R.string.diagnostics_copy) { _, _ ->
+                    // The whole log, not only the part shown, so it can be pasted somewhere to read
+                    val clip = getSystemService(android.content.ClipboardManager::class.java)
+                    clip.setPrimaryClip(android.content.ClipData.newPlainText(getString(R.string.diagnostics_title), full))
+                    android.widget.Toast.makeText(this, R.string.diagnostics_copied, android.widget.Toast.LENGTH_SHORT).show()
+                }
                 .show()
         }
 
