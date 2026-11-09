@@ -7,7 +7,9 @@ import android.os.Bundle
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.style.BackgroundColorSpan
+import android.view.GestureDetector
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -68,6 +70,27 @@ class TextReaderActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
         toolbar.title = nameOf(source)
         toolbar.setNavigationOnClickListener { finish() }
+        // A tap in the top third of the text goes up a screen, in the bottom third down one; the middle does nothing
+        val taps = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            // A tap is only reported when the press itself is taken, which the default does not do
+            override fun onDown(e: MotionEvent): Boolean = true
+
+            override fun onSingleTapUp(e: MotionEvent): Boolean {
+                val h = list.height.toFloat()
+                val step = (h * 0.9f).toInt()
+                when {
+                    e.y < h / 3 -> list.smoothScrollBy(0, -step)
+                    e.y > h * 2 / 3 -> list.smoothScrollBy(0, step)
+                }
+                return true
+            }
+        })
+        list.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
+            override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+                taps.onTouchEvent(e)
+                return false
+            }
+        })
         load(source)
     }
 
