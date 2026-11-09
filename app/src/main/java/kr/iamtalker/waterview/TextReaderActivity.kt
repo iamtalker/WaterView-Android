@@ -306,7 +306,14 @@ class TextReaderActivity : AppCompatActivity() {
         }
         val top = topRow().coerceAtMost(idx.rowCount - 1)
         if (!seeking) seek.progress = (idx.rowStart(top) * 1000 / maxOf(1L, idx.length)).toInt()
-        percent.text = if (rowPx <= 0f) "… / …" else "${currentPage()} / ${totalPages()}"
+        if (rowPx <= 0f) {
+            percent.text = "… / …"
+        } else {
+            // At the very end the last screen is the last page, even when it is shorter than a full one
+            val total = totalPages()
+            val current = if (!list.canScrollVertically(1)) total else currentPage()
+            percent.text = "$current / $total"
+        }
     }
 
     /** Scrolls so the row holding byte offset [at] is at the top. */
