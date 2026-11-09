@@ -202,6 +202,11 @@
              one another app handed it: see ViewerActivity.INTERNAL_VIEWER for why that
              matters. A subclass rather than an alias, so a file opened inside WaterView stays in
              WaterView's card in the recent apps screen. -->
+        <!-- A plain text file's own screen, opened from ViewerActivity. Not exported. See TextReaderActivity. -->
+        <activity
+            android:name=".TextReaderActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
         <activity
             android:name=".InternalViewer"
             android:exported="false"

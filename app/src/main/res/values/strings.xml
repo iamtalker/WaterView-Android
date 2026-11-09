@@ -145,6 +145,9 @@
     <string name="update_channel">업데이트 알림</string>
     <string name="update_available_title">물뷰 %1$s 버전이 나왔습니다</string>
     <string name="update_available_text">눌러서 업데이트를 확인하세요.</string>
+    <string name="text_unreadable">이 텍스트를 읽을 수 없습니다.</string>
+    <string name="text_truncated">파일이 커서 앞의 %1$dMB까지만 읽었습니다.</string>
+    <string name="text_search_none">찾는 말이 없습니다.</string>
     <string name="read_aloud">읽어주기</string>
     <string name="stop_reading">읽기 멈추기</string>
     <string name="nothing_to_read">읽을 글자가 없습니다.</string>

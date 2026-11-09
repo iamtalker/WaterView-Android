@@ -385,6 +385,7 @@ open class ViewerActivity : AppCompatActivity() {
                     this, nightChrome, ::touchExplorationOn, ::applySystemBarInsets, savedInstanceState,
                     failed = { showWeb(container, uri, FileKind.UNSUPPORTED, name, ext) },
                 ).apply { show(container, uri, name, ext) }
+                FileKind.TEXT -> openTextReader(uri)
                 FileKind.ARCHIVE -> showArchive(container, uri, name, savedInstanceState)
                 else -> showWeb(container, uri, kind, name, ext)
             }
@@ -2738,6 +2739,16 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /** A track may play on with the screen off: see [PlayerScreen.stopped]. */
+    /** A plain text file opens on its own screen, which keeps the whole text in hand. See TextReaderActivity. */
+    private fun openTextReader(uri: Uri) {
+        startActivity(
+            Intent(this, TextReaderActivity::class.java)
+                .setData(uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        )
+        finish()
+    }
+
     /** The read-aloud item of a text file: the phone's own voice reads it from the start. See ReadAloud. */
     private var readAloud: ReadAloud? = null
 
