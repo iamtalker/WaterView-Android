@@ -131,6 +131,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        askForNotificationsOnce()
+        lifecycleScope.launch { UpdateNotice.checkDaily(this@MainActivity) }
+        openUpdateFromNotice(intent)
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.root)) { v, insets ->
             val bars = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
@@ -195,6 +198,30 @@ class MainActivity : AppCompatActivity() {
         restoreStack(savedInstanceState)
         restoreFilters(savedInstanceState)
         onBackPressedDispatcher.addCallback(this, backCallback)
+    }
+
+    /** The permission to show update notices, asked once, the first time the app opens (Android 13 and later). */
+    private val notifyPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    private fun askForNotificationsOnce() {
+        if (android.os.Build.VERSION.SDK_INT < 33 || UpdateNotice.allowed(this)) return
+        val prefs = getSharedPreferences("update_notice", MODE_PRIVATE)
+        if (prefs.getBoolean("asked", false)) return
+        prefs.edit().putBoolean("asked", true).apply()
+        notifyPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    /** A tap on an update notice opens the app asking about the update, which is then offered as usual. */
+    private fun openUpdateFromNotice(from: Intent?) {
+        if (from?.getBooleanExtra(UpdateNotice.EXTRA_CHECK_UPDATE, false) != true) return
+        from.removeExtra(UpdateNotice.EXTRA_CHECK_UPDATE)
+        checkForUpdates()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openUpdateFromNotice(intent)
     }
 
     private fun checkForUpdates() {

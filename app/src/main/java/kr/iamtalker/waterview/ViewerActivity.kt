@@ -514,12 +514,14 @@ open class ViewerActivity : AppCompatActivity() {
         val isText = kind == FileKind.TEXT
         // A PDF's bookmarks are its pages, kept the same way as a text file's places
         val isPdf = kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE
+        // A comic, a folder's photos or a zip's pages, is in the same position: its pages are bookmarked
+        val isComic = photoPager != null
         toolbar.menu.findItem(R.id.action_bookmark_add).apply {
-            isVisible = isText || isPdf
+            isVisible = isText || isPdf || isComic
             setOnMenuItemClickListener { addBookmark(); true }
         }
         toolbar.menu.findItem(R.id.action_bookmarks).apply {
-            isVisible = isText || isPdf
+            isVisible = isText || isPdf || isComic
             setOnMenuItemClickListener { showBookmarks(); true }
         }
         toolbar.menu.findItem(R.id.action_text_reflow).apply {
@@ -2123,7 +2125,12 @@ open class ViewerActivity : AppCompatActivity() {
             val name = uri.lastPathSegment.orEmpty()
             ChildDoc(uri.toString(), name, contentResolver.getType(uri).orEmpty(), 0, 0)
         }
-        val at = pages.indexOf(opened).takeIf { it >= 0 } ?: 0
+        var at = pages.indexOf(opened).takeIf { it >= 0 } ?: 0
+        // A comic opened from its first page goes on from the page it was left at
+        if (at == 0 && pages.size > 1) {
+            val left = Positions.page(this, "comic:${pages.first()}") - 1
+            if (left in 1 until pages.size) at = left
+        }
         val first = docs[at]
         val pager = PhotoPager(
             this, opened, first, photoHost,
@@ -2832,9 +2839,29 @@ open class ViewerActivity : AppCompatActivity() {
         finish()
     }
 
-    /** Puts a bookmark where the top of a text file's screen is. */
+    /**
+     * The key bookmarks are kept under: a comic's folder or zip, named by its first page, or else the
+     * document itself. A comic's bookmarks are its pages, kept the way a PDF's pages are.
+     */
+    private fun bookmarkKey(): String? {
+        val pager = photoPager ?: return positionKey
+        return pager.firstUri?.let { "comic:$it" }
+    }
+
+    /** Puts a bookmark where the top of a text file's screen is, or on the page of a PDF or comic. */
     private fun addBookmark() {
-        val key = positionKey ?: return
+        val key = bookmarkKey() ?: return
+        val pager = photoPager
+        if (pager != null) {
+            val at = pager.currentIndex.toLong()
+            if (Marks.bookmarks(this, key).any { it.at == at }) {
+                Toast.makeText(this, R.string.bookmark_exists, Toast.LENGTH_SHORT).show()
+                return
+            }
+            Marks.add(this, key, at, pager.names.getOrElse(at.toInt()) { "" })
+            Toast.makeText(this, R.string.bookmark_added, Toast.LENGTH_SHORT).show()
+            return
+        }
         if (currentKind == FileKind.PDF || currentKind == FileKind.PDF_SIMPLE) {
             if (pageAt < 1) return
             val page = pageAt.toLong()
@@ -2860,7 +2887,7 @@ open class ViewerActivity : AppCompatActivity() {
      * instead, since a bookmark that cannot be removed is one more to pick past.
      */
     private fun showBookmarks() {
-        val key = positionKey ?: return
+        val key = bookmarkKey() ?: return
         val marks = Marks.bookmarks(this, key)
         if (marks.isEmpty()) {
             Toast.makeText(this, R.string.no_bookmarks, Toast.LENGTH_SHORT).show()
@@ -2869,7 +2896,9 @@ open class ViewerActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.bookmarks)
             .setItems(bookmarkLabels(marks)) { _, which ->
-                if (currentKind == FileKind.PDF || currentKind == FileKind.PDF_SIMPLE) {
+                if (photoPager != null) {
+                    photoPager?.goTo(marks[which].at.toInt())
+                } else if (currentKind == FileKind.PDF || currentKind == FileKind.PDF_SIMPLE) {
                     tellPage(PortCommand.goToPage(marks[which].at.toInt()))
                 } else {
                     tellPage(PortCommand.goToOffset(marks[which].at))
@@ -2898,6 +2927,13 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     private fun savePosition() {
+        // A comic is left at its page, kept under the same key its bookmarks are
+        val comic = photoPager
+        if (comic != null) {
+            val comicKey = bookmarkKey() ?: return
+            if (comic.count >= 2) Positions.save(this, comicKey, comic.currentIndex + 1, comic.count)
+            return
+        }
         val key = positionKey ?: return
         if (currentKind == FileKind.TEXT) {
             textTop?.let { Marks.setLeftAt(this, key, it) }

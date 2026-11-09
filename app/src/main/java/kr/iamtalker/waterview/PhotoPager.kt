@@ -107,6 +107,12 @@ internal class PhotoPager(
     /** The photos' names, in order. Read by tests. */
     val names: List<String> get() = photos.map { it.name }
 
+    /** The index in the folder's list of the page on show, a split photo counting as its first half. */
+    val currentIndex: Int get() = firstIndex(view.currentItem)
+
+    /** The address of the folder's first photo, which names the folder for its bookmarks. */
+    val firstUri: Uri? get() = photos.firstOrNull()?.let(::uriOf)
+
     /** The photo on screen. */
     private val step get() = 1
     private val pageCount get() = (photos.size + step - 1) / step
