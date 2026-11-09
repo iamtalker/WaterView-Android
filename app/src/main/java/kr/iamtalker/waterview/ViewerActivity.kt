@@ -884,7 +884,7 @@ open class ViewerActivity : AppCompatActivity() {
 
     /** A PDF or text file from another app, in a folder the reader has not been given yet. */
     private fun needsFolderGrant(kind: FileKind, uri: Uri): Boolean {
-        if (kind != FileKind.PDF && kind != FileKind.PDF_SIMPLE && kind != FileKind.TEXT) return false
+        if (kind != FileKind.PDF && kind != FileKind.PDF_SIMPLE && kind != FileKind.TEXT && kind != FileKind.ARCHIVE) return false
         if (DocumentsContract.isTreeUri(uri) || ArchiveProvider.isEntry(this, uri)) return false
         if (uri.authority != "com.android.externalstorage.documents") return false
         val docId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull() ?: return false
@@ -2920,8 +2920,18 @@ open class ViewerActivity : AppCompatActivity() {
     /** Opens the file after this one in the folder it was opened from. False when there is none. */
     private fun openNextInFolder(): Boolean {
         val current = intent?.data ?: return false
-        val id = runCatching { DocumentsContract.getDocumentId(current) }.getOrNull() ?: return false
-        val files = siblingsOf(this, current)
+        // A page inside a zip goes on to the next zip in the folder, the zip being the document in the folder
+        val archive = ArchiveProvider.parse(current)?.archive
+        val source = archive ?: current
+        val id = runCatching { DocumentsContract.getDocumentId(source) }.getOrNull() ?: return false
+        val files = if (archive != null) {
+            siblingsOf(this, source) { name ->
+                val lower = name.lowercase()
+                lower.endsWith(".zip") || lower.endsWith(".cbz")
+            }
+        } else {
+            siblingsOf(this, source)
+        }
         val at = files.indexOfFirst { DocumentsContract.getDocumentId(it) == id }
         val next = files.getOrNull(at + 1)?.takeIf { at >= 0 } ?: return false
         savePosition()

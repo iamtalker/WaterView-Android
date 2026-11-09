@@ -22,7 +22,7 @@ internal object FolderFiles {
  * The files in the folder a document sits in, in name order (1권, 2권, 10권), as documents under the
  * folder the reader granted. Empty when the document is not in a folder the reader granted.
  */
-internal fun siblingsOf(context: Context, uri: Uri): List<Uri> {
+internal fun siblingsOf(context: Context, uri: Uri, keep: (String) -> Boolean = { true }): List<Uri> {
     val resolver = context.contentResolver
     val docId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull() ?: return emptyList()
     val tree = resolver.persistedUriPermissions
@@ -35,7 +35,7 @@ internal fun siblingsOf(context: Context, uri: Uri): List<Uri> {
         } ?: return emptyList()
     val parent = if (docId.contains('/')) docId.substringBeforeLast('/') else docId.substringBefore(':') + ":"
     return childrenOf(resolver, tree, parent).orEmpty()
-        .filter { it.mime != MIME_DIR }
+        .filter { it.mime != MIME_DIR && keep(it.name) }
         .sortedWith { a, b -> naturalCompare(a.name, b.name) }
         .map { DocumentsContract.buildDocumentUriUsingTree(tree, it.docId) }
 }
