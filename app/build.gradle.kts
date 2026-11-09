@@ -182,6 +182,8 @@ android {
 val permissionAllowlistSuffixes = setOf(
     "android.permission.INTERNET",
     "android.permission.REQUEST_INSTALL_PACKAGES",
+    // Shows a notice when a newer version is out. Asked once, on Android 13 and later. See UpdateNotice.
+    "android.permission.POST_NOTIFICATIONS",
     // androidx.core declares this so libraries can registerReceiver(..., RECEIVER_NOT_EXPORTED).
     // Signature level and self-granted, so it is never shown to the user as a permission.
     ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
