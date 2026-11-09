@@ -11,6 +11,12 @@
          grants, and rendering is fully offline. See MediaFolders.
          Media3 contributes ACCESS_NETWORK_STATE for streaming bitrate choice, stripped below because
          WaterView only ever plays local files. The checkPermissions task fails the build on any others. -->
+    <!-- All files access, which other viewers ask for too: it lets the folder of a photo opened from
+         outside be read directly, even where the media index leaves a photo out (a .nomedia folder,
+         an SD card not yet scanned). Asked for in Settings, once. See MediaFolders. -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"

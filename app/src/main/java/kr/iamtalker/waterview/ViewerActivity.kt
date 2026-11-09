@@ -242,6 +242,11 @@ open class ViewerActivity : AppCompatActivity() {
         onPhotoPermission?.invoke(granted)
         onPhotoPermission = null
     }
+    // All files access is switched on in Settings, which answers nothing: the switch is read back on return
+    private val allFilesAccess = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        onPhotoPermission?.invoke(MediaFolders.allFiles())
+        onPhotoPermission = null
+    }
 
     private val trashPrompt = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
         val photo = trashing ?: return@registerForActivityResult
@@ -2045,7 +2050,8 @@ open class ViewerActivity : AppCompatActivity() {
      * when the index does not know the photo, it is shown alone.
      */
     private fun showOutsidePhoto(container: FrameLayout, uri: Uri, name: String, ext: String) {
-        if (MediaFolders.granted(this)) {
+        val ready = MediaFolders.allFiles() || (Build.VERSION.SDK_INT < 30 && MediaFolders.granted(this))
+        if (ready) {
             listMediaPhotos(container, uri, name, ext)
             return
         }
@@ -2053,14 +2059,23 @@ open class ViewerActivity : AppCompatActivity() {
             if (granted) listMediaPhotos(container, uri, name, ext)
             else showPicture(container, uri, name, ext)
         }
-        photoPermission.launch(MediaFolders.permission)
+        if (Build.VERSION.SDK_INT >= 30) {
+            allFilesAccess.launch(
+                android.content.Intent(
+                    android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:$packageName"),
+                )
+            )
+        } else {
+            photoPermission.launch(MediaFolders.permission)
+        }
     }
 
     private fun listMediaPhotos(container: FrameLayout, uri: Uri, name: String, ext: String) {
         offMain({ found: Pair<MediaFolders.MediaPhoto, List<MediaFolders.MediaPhoto>>? ->
             if (found == null) showPicture(container, uri, name, ext)
             else showMediaPhotos(container, found.first, found.second)
-        }) { app -> MediaFolders.photosBeside(app, uri) }
+        }) { app -> MediaFolders.folderPhotos(uri) ?: MediaFolders.photosBeside(app, uri) }
     }
 
     /** The photos of a folder read from the media index, swiped through as the photos of a folder added here are. */

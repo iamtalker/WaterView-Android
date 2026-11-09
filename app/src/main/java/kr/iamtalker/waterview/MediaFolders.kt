@@ -6,9 +6,12 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.webkit.MimeTypeMap
 import androidx.core.content.ContextCompat
+import java.io.File
 
 /**
  * The photos beside a photo opened from outside WaterView, read from the phone's media index.
@@ -25,6 +28,46 @@ internal object MediaFolders {
     val permission: String
         get() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES
         else Manifest.permission.READ_EXTERNAL_STORAGE
+
+    /** Whether all files access is on, which lets the folder be read by its path, not the index. */
+    fun allFiles(): Boolean = Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()
+
+    /**
+     * [photo] and the photos in its folder, read straight from the folder on the phone or the SD card
+     * with all files access. Unlike the index this also finds photos in a .nomedia folder. Null when
+     * the access is off, the photo is not on the storage, or the folder can't be read.
+     */
+    fun folderPhotos(photo: Uri): Pair<MediaPhoto, List<MediaPhoto>>? {
+        if (!allFiles() || photo.authority != EXTERNAL_STORAGE) return null
+        val docId = runCatching { DocumentsContract.getDocumentId(photo) }.getOrNull() ?: return null
+        val volume = docId.substringBefore(':', "")
+        if (volume.isEmpty()) return null
+        val relative = docId.substringAfter(':', "")
+        val dirRelative = relative.substringBeforeLast('/', "")
+        val root = if (volume == "primary") "/storage/emulated/0" else "/storage/$volume"
+        val files = File(root, dirRelative).listFiles()
+            ?.filter { it.isFile && isImage(it.name) }
+            ?.sortedBy { it.name.lowercase() }
+            ?: return null
+        // Read by path, not by document address: the storage provider refuses a document it was not
+        // handed, even with all files access, so the neighbours can't be opened through it.
+        val pages = files.map { f ->
+            MediaPhoto(
+                Uri.fromFile(f),
+                f.name,
+                MimeTypeMap.getSingleton().getMimeTypeFromExtension(f.extension.lowercase()).orEmpty(),
+            )
+        }
+        val target = File(root, relative).path
+        val at = pages.indexOfFirst { it.uri.path == target }
+        if (at < 0) return null
+        return pages[at] to pages
+    }
+
+    private fun isImage(name: String): Boolean {
+        val kind = FileKind.detect(name.substringAfterLast('.', "").lowercase(), null)
+        return kind == FileKind.IMAGE || kind == FileKind.IMAGE_WEB
+    }
 
     fun granted(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
