@@ -20,6 +20,12 @@ internal class ReadAloud(context: Context, private val onDone: () -> Unit) {
     private var ready = false
     private var playing = false
     private val queue = ArrayDeque<String>()
+    /** The voice language the text being read calls for, applied once the engine is ready. */
+    private var wanted: Locale? = null
+
+    private fun applyLanguage() {
+        wanted?.let { engine?.language = it }
+    }
 
     init {
         engine = TextToSpeech(context.applicationContext) { status ->
@@ -29,7 +35,7 @@ internal class ReadAloud(context: Context, private val onDone: () -> Unit) {
                 finish()
                 return@TextToSpeech
             }
-            tts.language = Locale.getDefault()
+            applyLanguage()
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {}
                 override fun onDone(utteranceId: String?) {
@@ -53,6 +59,10 @@ internal class ReadAloud(context: Context, private val onDone: () -> Unit) {
         queue.addAll(pieces(text))
         if (queue.isEmpty()) return
         playing = true
+        // The voice follows the text, not the phone's language: Korean text read with an English
+        // voice comes out in English sounds. A text with no Hangul is read in the phone's language.
+        wanted = languageOf(text)
+        if (ready) applyLanguage()
         if (ready) speakNext()
     }
 
@@ -90,6 +100,11 @@ internal class ReadAloud(context: Context, private val onDone: () -> Unit) {
     }
 
     internal companion object {
+        /** Korean when the text has Hangul in it, else the phone's own language. */
+        internal fun languageOf(text: String): Locale =
+            if (text.any { it in '가'..'힣' || it in 'ㄱ'..'ㆎ' }) Locale.KOREAN
+            else Locale.getDefault()
+
         /** Cut at a line break near [size] characters where one is there, so no sentence is cut in half. */
         internal fun pieces(text: String, size: Int = 3000): List<String> {
             val out = mutableListOf<String>()

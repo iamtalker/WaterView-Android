@@ -74,6 +74,43 @@ moreBtn.addEventListener("click", function () {
   showPage().catch(function (e) { vwError("나머지 내용을 읽을 수 없습니다", String(e)); });
 });
 
+/* A search reaches the part of the file not read yet. The rest is read first, up to this many bytes
+   so that a huge file is not read whole, and then the search goes on from where it was. See find.js
+   parts(), which waits on busy() and then calls vwFind.reread(). */
+var VW_SEARCH_MAX = 20 * 1024 * 1024;
+var readingRest = false;
+
+function readRest() {
+  if (readingRest) return;
+  readingRest = true;
+  (function step() {
+    if (finished || shown >= VW_SEARCH_MAX) {
+      readingRest = false;
+      vwFind.reread();
+      return;
+    }
+    showPage().then(step, function (e) {
+      readingRest = false;
+      vwFind.reread();
+      vwError("나머지 내용을 읽을 수 없습니다", String(e));
+    });
+  })();
+}
+
+window.vwFindParts = {
+  count: function () { return 1; },
+  root: function () { return content; },
+  show: function () { return content; },
+  shown: function () { return 0; },
+  /* The search starts from what is on the screen, as the viewport top is 0 in this measure */
+  top: function () { return 0; },
+  busy: function () {
+    if (finished || shown >= VW_SEARCH_MAX) return false;
+    readRest();
+    return true;
+  }
+};
+
 /* Positions are counted in characters of the text as it is decoded, from its start. The page
    reports the top of the screen as "tx <n>", and goes to one when told "j<n>" (see Marks.kt). */
 
@@ -115,6 +152,24 @@ if (hor) {
     loadingMore = true;
     showPage().catch(function () {}).then(function () { loadingMore = false; });
   }, { passive: true });
+} else {
+  // Downward, the rest is read as the reader gets near the end, the same as sideways. Without this a
+  // long file stopped at the last piece read, which could be well short of its end.
+  // Reads piece after piece while the end is near, rather than one piece per scroll, so the end
+  // shows without waiting for the reader to move again
+  var loadingRest = false;
+  function keepAhead() {
+    if (finished || loadingRest || doc === null) return;
+    if (scrollY + innerHeight * 3 < document.documentElement.scrollHeight) return;
+    loadingRest = true;
+    showPage().then(function () {
+      loadingRest = false;
+      keepAhead();
+    }, function () {
+      loadingRest = false;
+    });
+  }
+  addEventListener("scroll", keepAhead, { passive: true });
 }
 
 /* The character at the top of the screen, or null when none is there to be found. Sideways, that is
@@ -242,4 +297,15 @@ vwOpenText()
   .then(function () { return markAt > 0 ? goToChar(markAt) : undefined; })
   // Where the screen starts is known before any scroll, so a bookmark can be put there at once
   .then(function () { reportTop(); })
+  .then(function () { readAheadInBackground(); })
   .catch(function (e) { vwError("이 파일을 읽을 수 없습니다", String(e)); });
+
+/* The rest of the file is read in the background, a piece at a time once the first page is up, so that
+   scrolling to its end does not wait on a read. It stops at the end of the file, or at the size the
+   search reads to (VW_SEARCH_MAX), which keeps a huge file from being read whole. */
+function readAheadInBackground() {
+  if (finished || shown >= VW_SEARCH_MAX) return;
+  showPage().then(function () {
+    setTimeout(readAheadInBackground, 0);
+  }, function () {});
+}
