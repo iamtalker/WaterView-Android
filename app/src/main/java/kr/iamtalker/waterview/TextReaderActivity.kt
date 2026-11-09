@@ -67,6 +67,8 @@ class TextReaderActivity : AppCompatActivity() {
     private var textSizeSp = 18f
 
     private val loader = Executors.newSingleThreadExecutor()
+    /** Page measuring, on its own thread so a long file never holds up the reading or the search. */
+    private val pager = Executors.newSingleThreadExecutor()
     private val adapter = ChunkAdapter()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -337,7 +339,8 @@ class TextReaderActivity : AppCompatActivity() {
         val fraction = at.toLong() * 1000 / text.length
         if (!seeking) seek.progress = fraction.toInt()
         val (current, total) = screenPages()
-        percent.text = "$current / $total"
+        // No pages yet while they are measured: say so rather than show a count that is wrong
+        percent.text = if (total == 0) "… / …" else "$current / $total"
     }
 
     /** The screen the text is on, and how many screens the whole text makes, a screen counting as a page. */
@@ -359,7 +362,7 @@ class TextReaderActivity : AppCompatActivity() {
         }
         val snapshot = text
         val size = textSizeSp
-        loader.execute {
+        pager.execute {
             Diag.log(this, "text: pages start chars=${snapshot.length} w=$width h=$height size=$size")
             val breaks = runCatching { computePages(snapshot, width, height, size) }
                 .onFailure { Diag.log(this, "text: pages failed ${it.javaClass.simpleName} ${it.message}") }
@@ -417,7 +420,7 @@ class TextReaderActivity : AppCompatActivity() {
 
     private fun screenPages(): Pair<Int, Int> {
         // Fixed once per text size from the screen's size (see ensurePages), so the total does not drift
-        if (pageStarts.isEmpty()) return Pair(1, 1)
+        if (pageStarts.isEmpty()) return Pair(0, 0)
         return Pair(indexAtOrBefore(pageStarts, topOffset()) + 1, pageStarts.size)
     }
 
@@ -611,6 +614,7 @@ class TextReaderActivity : AppCompatActivity() {
         readAloud?.release()
         readAloud = null
         loader.shutdown()
+        pager.shutdownNow()
         super.onDestroy()
     }
 
