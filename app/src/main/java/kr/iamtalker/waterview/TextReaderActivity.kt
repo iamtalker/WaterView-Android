@@ -7,14 +7,16 @@ import android.os.Bundle
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.style.BackgroundColorSpan
-import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.EditText
+import kotlin.math.abs
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
@@ -70,27 +72,29 @@ class TextReaderActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
         toolbar.title = nameOf(source)
         toolbar.setNavigationOnClickListener { finish() }
-        // A tap in the top third of the text goes up a screen, in the bottom third down one; the middle does nothing
-        val taps = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            // A tap is only reported when the press itself is taken, which the default does not do
-            override fun onDown(e: MotionEvent): Boolean = true
-
-            override fun onSingleTapUp(e: MotionEvent): Boolean {
-                val h = list.height.toFloat()
-                val step = (h * 0.9f).toInt()
-                when {
-                    e.y < h / 3 -> list.smoothScrollBy(0, -step)
-                    e.y > h * 2 / 3 -> list.smoothScrollBy(0, step)
+        // A short tap without much movement: the top third of the text goes up a screen, the bottom third
+        // down one, and the middle does nothing. A drag is left to the list to scroll.
+        val slop = ViewConfiguration.get(this).scaledTouchSlop
+        var downX = 0f
+        var downY = 0f
+        var downAt = 0L
+        list.setOnTouchListener { _, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.x
+                    downY = e.y
+                    downAt = e.eventTime
                 }
-                return true
+                MotionEvent.ACTION_UP -> {
+                    val moved = abs(e.x - downX) + abs(e.y - downY)
+                    val held = e.eventTime - downAt
+                    val isTap = moved < slop && held < 400
+                    // Posted rather than run now: the list's own touch handling for this release would cancel a scroll started here
+                    if (isTap) list.post { tapAt(e.y) }
+                }
             }
-        })
-        list.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
-            override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
-                taps.onTouchEvent(e)
-                return false
-            }
-        })
+            false
+        }
         load(source)
     }
 
@@ -118,12 +122,38 @@ class TextReaderActivity : AppCompatActivity() {
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             setPadding(dp(8), 0, dp(12), 0)
         }
-        val bottom = LinearLayout(this).apply {
+        // Two rows, as the PDF viewer has them: the place along the text, then the controls
+        val progressRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(ground)
             addView(seek, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(percent, LinearLayout.LayoutParams(dp(72), ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        val previous = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
+            text = "‹"
+            setOnClickListener { scrollScreen(-1) }
+        }
+        val next = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
+            text = "›"
+            setOnClickListener { scrollScreen(1) }
+        }
+        val settingsButton = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
+            text = getString(R.string.reading_settings)
+            setOnClickListener { askForTextSize() }
+        }
+        val controlRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(previous, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(View(this@TextReaderActivity), LinearLayout.LayoutParams(0, 0, 1f))
+            addView(next, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(settingsButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        val bottom = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(ground)
+            addView(progressRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(controlRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         root.addView(toolbar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -142,6 +172,24 @@ class TextReaderActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(bar: SeekBar) { seeking = false }
         })
         return root
+    }
+
+    /** Moves the text one screen up ([direction] -1) or down (1). */
+    private fun scrollScreen(direction: Int) {
+        val h = list.height
+        if (h <= 0) return
+        list.smoothScrollBy(0, direction * (h * 0.9f).toInt())
+    }
+
+    /** A tap at [y] in the list: the top third goes up a screen, the bottom third down one, the middle nothing. */
+    private fun tapAt(y: Float) {
+        val h = list.height.toFloat()
+        if (h <= 0f) return
+        val step = (h * 0.9f).toInt()
+        when {
+            y < h / 3 -> list.smoothScrollBy(0, -step)
+            y > h * 2 / 3 -> list.smoothScrollBy(0, step)
+        }
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
