@@ -128,6 +128,28 @@ class SettingsActivity : AppCompatActivity() {
         }
         refreshTextMode()
 
+        // The size of plain text, which the text screen reads back each time it is shown
+        val textSizeRow = findViewById<View>(R.id.textSizeRow)
+        val textSizeValue = findViewById<TextView>(R.id.textSizeValue)
+        val readerPrefs = getSharedPreferences("text_reader", MODE_PRIVATE)
+        val sizes = intArrayOf(14, 16, 18, 20, 22, 24, 28)
+        fun refreshTextSize() {
+            textSizeValue.text = readerPrefs.getFloat("size_sp", 18f).toInt().toString()
+        }
+        textSizeRow.setOnClickListener {
+            val current = readerPrefs.getFloat("size_sp", 18f).toInt()
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.text_size)
+                .setSingleChoiceItems(sizes.map { "$it" }.toTypedArray(), sizes.indexOf(current).coerceAtLeast(0)) { dialog, which ->
+                    readerPrefs.edit().putFloat("size_sp", sizes[which].toFloat()).apply()
+                    refreshTextSize()
+                    dialog.dismiss()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+        refreshTextSize()
+
         val pdfModeRow = findViewById<View>(R.id.pdfReadingModeRow)
         val pdfModeValue = findViewById<TextView>(R.id.pdfReadingModeValue)
         fun refreshPdfMode() {

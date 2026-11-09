@@ -1,5 +1,6 @@
 package kr.iamtalker.waterview
 
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
@@ -22,6 +23,9 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
@@ -45,6 +49,8 @@ class TextReaderActivity : AppCompatActivity() {
     private lateinit var list: RecyclerView
     private lateinit var seek: SeekBar
     private lateinit var percent: TextView
+    private lateinit var bottomBar: View
+    private var fullscreen = false
 
     private var text: String = ""
     private var starts = IntArray(0)
@@ -117,6 +123,7 @@ class TextReaderActivity : AppCompatActivity() {
         }
         seek = SeekBar(this).apply { max = 1000 }
         percent = TextView(this).apply {
+            setOnClickListener { askForPercent() }
             setTextColor(adapter.ink)
             textSize = 13f
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
@@ -138,8 +145,8 @@ class TextReaderActivity : AppCompatActivity() {
             setOnClickListener { scrollScreen(1) }
         }
         val settingsButton = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
-            text = getString(R.string.reading_settings)
-            setOnClickListener { askForTextSize() }
+            text = getString(R.string.settings)
+            setOnClickListener { startActivity(Intent(this@TextReaderActivity, SettingsActivity::class.java)) }
         }
         val controlRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -158,6 +165,7 @@ class TextReaderActivity : AppCompatActivity() {
         root.addView(toolbar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         root.addView(bottom, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        bottomBar = bottom
 
         list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
@@ -178,7 +186,34 @@ class TextReaderActivity : AppCompatActivity() {
     private fun scrollScreen(direction: Int) {
         val h = list.height
         if (h <= 0) return
+        if (direction > 0 && atEnd()) {
+            openNextInFolder()
+            return
+        }
         list.smoothScrollBy(0, direction * (h * 0.9f).toInt())
+    }
+
+    /** Whether the last of the text is on the screen. */
+    private fun atEnd(): Boolean {
+        if (starts.isEmpty()) return false
+        val last = (list.layoutManager as LinearLayoutManager).findLastCompletelyVisibleItemPosition()
+        return last >= starts.size - 1
+    }
+
+    /** Opens the file after this one in the folder it was opened from. Nothing happens when there is none. */
+    private fun openNextInFolder() {
+        val current = intent.data ?: return
+        val id = runCatching { android.provider.DocumentsContract.getDocumentId(current) }.getOrNull() ?: return
+        val files = siblingsOf(this, current)
+        val at = files.indexOfFirst { android.provider.DocumentsContract.getDocumentId(it) == id }
+        val next = files.getOrNull(at + 1)?.takeIf { at >= 0 } ?: return
+        startActivity(
+            Intent()
+                .setClassName(this, ViewerActivity.INTERNAL_VIEWER)
+                .setData(next)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        )
+        finish()
     }
 
     /** A tap at [y] in the list: the top third goes up a screen, the bottom third down one, the middle nothing. */
@@ -188,8 +223,20 @@ class TextReaderActivity : AppCompatActivity() {
         val step = (h * 0.9f).toInt()
         when {
             y < h / 3 -> list.smoothScrollBy(0, -step)
-            y > h * 2 / 3 -> list.smoothScrollBy(0, step)
+            y > h * 2 / 3 -> if (atEnd()) openNextInFolder() else list.smoothScrollBy(0, step)
+            else -> toggleFullscreen()
         }
+    }
+
+    /** Hides or shows the title and the controls, and the system bars with them: the middle of the text, tapped. */
+    private fun toggleFullscreen() {
+        fullscreen = !fullscreen
+        toolbar.visibility = if (fullscreen) View.GONE else View.VISIBLE
+        bottomBar.visibility = if (fullscreen) View.GONE else View.VISIBLE
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (fullscreen) controller.hide(WindowInsetsCompat.Type.systemBars())
+        else controller.show(WindowInsetsCompat.Type.systemBars())
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -387,6 +434,28 @@ class TextReaderActivity : AppCompatActivity() {
             .show()
     }
 
+    /** The place along the text, as a percent, asked for and gone to. */
+    private fun askForPercent() {
+        if (text.isEmpty()) return
+        val current = (topOffset().toLong() * 100 / text.length).toInt()
+        val entry = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setText(current.toString())
+            setSelection(text.length)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.go_to_page)
+            .setMessage("0 ~ 100 %")
+            .setView(entry)
+            .setPositiveButton(R.string.go) { _, _ ->
+                val p = entry.text.toString().toIntOrNull()
+                if (p != null && p in 0..100) jumpTo(text.length.toLong() * p / 100)
+                else Toast.makeText(this, "0 ~ 100", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
     private fun askForTextSize() {
         val sizes = intArrayOf(14, 16, 18, 20, 22, 24, 28)
         val labels = sizes.map { "$it" }.toTypedArray()
@@ -413,6 +482,17 @@ class TextReaderActivity : AppCompatActivity() {
         readAloud = fresh
         fresh.start(text.substring(from))
         invalidateOptionsMenu()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // The size may have been changed in Settings while this screen was away
+        val size = getSharedPreferences(PREFS, MODE_PRIVATE).getFloat(KEY_SIZE, 18f)
+        if (size != textSizeSp) {
+            textSizeSp = size
+            adapter.size = size
+            adapter.notifyDataSetChanged()
+        }
     }
 
     override fun onStop() {

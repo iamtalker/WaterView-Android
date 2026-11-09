@@ -367,6 +367,12 @@ open class ViewerActivity : AppCompatActivity() {
         }
 
         fun show(kind: FileKind) {
+            // A PDF or text file from outside asks once for its folder, so the files after it can be found
+            if (!folderAsked && needsFolderGrant(kind, uri)) {
+                folderAsked = true
+                askFolderGrant(uri) { show(kind) }
+                return
+            }
             currentKind = kind
             when (kind) {
                 FileKind.IMAGE, FileKind.IMAGE_WEB -> {
@@ -868,6 +874,42 @@ open class ViewerActivity : AppCompatActivity() {
     /** What a PDF's page or a book's place is saved under; see [Positions]. Null for any other format. */
     private var positionKey: String? = null
 
+    /** Whether the folder of this file has been asked for already, so the question is asked once. */
+    private var folderAsked = false
+
+    /** A PDF or text file from another app, in a folder the reader has not been given yet. */
+    private fun needsFolderGrant(kind: FileKind, uri: Uri): Boolean {
+        if (kind != FileKind.PDF && kind != FileKind.PDF_SIMPLE && kind != FileKind.TEXT) return false
+        if (DocumentsContract.isTreeUri(uri) || ArchiveProvider.isEntry(this, uri)) return false
+        if (uri.authority != "com.android.externalstorage.documents") return false
+        val docId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull() ?: return false
+        return grantedFolderOf(docId) == null
+    }
+
+    /**
+     * Opens the folder picker on the folder of [uri]. Once it is allowed, the file is opened from inside
+     * the folder, so the files beside it can be reached. Anything else calls [otherwise] to show it alone.
+     */
+    private fun askFolderGrant(uri: Uri, otherwise: () -> Unit) {
+        val docId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+        if (docId == null) {
+            otherwise()
+            return
+        }
+        onFolderPicked = { tree ->
+            val held = tree?.takeIf { it.isFolderOf(docId) }
+            if (held != null) {
+                runCatching {
+                    contentResolver.takePersistableUriPermission(held, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                openFromFolder(held, docId)
+            } else {
+                otherwise()
+            }
+        }
+        folderPicker.launch(folderOf(uri))
+    }
+
     /**
      * Whether the document is a book, whose readout is how far through it the reader is and
      * which has no page to go to.
@@ -1113,6 +1155,8 @@ open class ViewerActivity : AppCompatActivity() {
     /** Page controls snap PDFs to a page; side taps do so when that preference is on. */
     private fun turnPage(forward: Boolean, pageButton: Boolean = false) {
         val kind = currentKind ?: return
+        // Past the last page, forward goes on to the next file in the folder, if there is one
+        if (forward && atLastPage() && openNextInFolder()) return
         val pager = photoPager
         if (pager != null && pager.count > 1) {
             if (forward) pager.next() else pager.previous()
@@ -1153,7 +1197,30 @@ open class ViewerActivity : AppCompatActivity() {
      */
     // The field starts with the page in the digits the number keyboard types, whatever the locale
     @SuppressLint("SetTextI18n")
+    /** A photo or a comic page: the number of the page to go to, asked for in the same way. */
+    private fun askForPhoto(pager: PhotoPager) {
+        val total = pager.count
+        if (total < 2) return
+        val entry = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText((pager.currentIndex + 1).toString())
+            setSelection(text.length)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.go_to_page)
+            .setMessage(getString(R.string.page_range, total))
+            .setView(entry)
+            .setPositiveButton(R.string.go) { _, _ ->
+                val n = entry.text.toString().toIntOrNull()
+                if (n != null && n in 1..total) pager.goTo(n - 1)
+                else Toast.makeText(this, getString(R.string.page_range, total), Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
     private fun askForPage() {
+        photoPager?.let { askForPhoto(it); return }
         val total = pageTotal
         if (total < 2 || book) return
 
@@ -2041,8 +2108,6 @@ open class ViewerActivity : AppCompatActivity() {
         val pager = PhotoPager(this, uri, opened, photoHost)
         photoPager = pager
         countsPhotos = true
-        // The readout counts photos, and has no page to go to
-        pageIndicator.isClickable = false
         container.addView(pager.view, matchParent())
         offMain({ found: Pair<List<ChildDoc>, Int>? ->
             photosListed = true
@@ -2142,7 +2207,6 @@ open class ViewerActivity : AppCompatActivity() {
         photoPager = pager
         photosListed = true
         countsPhotos = true
-        pageIndicator.isClickable = false
         findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_delete).isVisible = false
         container.addView(pager.view, matchParent())
         pager.fill(docs, at)
@@ -2838,6 +2902,31 @@ open class ViewerActivity : AppCompatActivity() {
      * opening keeps the page it had from last time.
      */
     /** Opens the file at [index] of the folder this one came from, in place of this one. */
+    /** Whether the page on show is the last of its document: a photo, or a PDF page. */
+    private fun atLastPage(): Boolean {
+        photoPager?.let { return it.count > 0 && it.currentIndex >= it.count - 1 }
+        val kind = currentKind
+        return (kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE) && pageTotal > 0 && pageAt >= pageTotal
+    }
+
+    /** Opens the file after this one in the folder it was opened from. False when there is none. */
+    private fun openNextInFolder(): Boolean {
+        val current = intent?.data ?: return false
+        val id = runCatching { DocumentsContract.getDocumentId(current) }.getOrNull() ?: return false
+        val files = siblingsOf(this, current)
+        val at = files.indexOfFirst { DocumentsContract.getDocumentId(it) == id }
+        val next = files.getOrNull(at + 1)?.takeIf { at >= 0 } ?: return false
+        savePosition()
+        startActivity(
+            Intent()
+                .setClassName(this, ViewerActivity.INTERNAL_VIEWER)
+                .setData(next)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        )
+        finish()
+        return true
+    }
+
     private fun openFolderFile(index: Int) {
         val target = FolderFiles.uris.getOrNull(index) ?: return
         savePosition()
