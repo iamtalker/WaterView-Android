@@ -1843,10 +1843,11 @@ open class ViewerActivity : AppCompatActivity() {
                         }
                         is PortMessage.SearchCount ->
                             onSearchCount?.invoke(said.at, said.total, said.done)
-                        is PortMessage.Timing -> if (kind == FileKind.PDF) {
+                        is PortMessage.Timing -> if (kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE) {
                             Diag.log(
                                 this@ViewerActivity,
-                                "pdf: page ${said.page} took ${said.total} ms (waited ${said.waited}, load ${said.load})"
+                                "pdf: page ${said.page} turn-to-picture ${said.sinceTurn} ms " +
+                                    "(finding page ${said.placed}, waited ${said.waited}, load ${said.load}, draw ${said.total})"
                             )
                         }
                         PortMessage.Locked -> if (kind == FileKind.PDF) printLocked = true
@@ -2594,6 +2595,15 @@ open class ViewerActivity : AppCompatActivity() {
         setUpFastScroll(web, kind)
 
         container.addView(web, matchParent())
+        if (kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE) {
+            // Which viewer a PDF opened in, how it is read and on what engine: a slow one can be told from these
+            Diag.log(
+                this,
+                "pdf: opened viewer=${if (kind == FileKind.PDF_SIMPLE) "simple" else "pdf.js"} " +
+                    "horizontal=${Settings.pdfHorizontalPages(this)} split=${Settings.pdfSplitWidePages(this)} " +
+                    "webview=${runCatching { WebViewCompat.getCurrentWebViewPackage(this)?.versionName }.getOrNull()}"
+            )
+        }
         if (kind == FileKind.PDF_SIMPLE) {
             simplePdf = SimplePdf(
                 this, uri,

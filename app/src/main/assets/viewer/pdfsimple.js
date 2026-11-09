@@ -303,6 +303,8 @@
     var img = document.createElement("img");
     img.alt = "Page " + (s.n + 1);
     var settled = false;
+    /* For the diagnostic log: how long the picture of this page took to come */
+    var asked = Date.now();
     function settle() {
       if (settled) return false;
       settled = true;
@@ -311,6 +313,8 @@
       return !s.dead;
     }
     img.onload = function () {
+      var took = Date.now() - asked;
+      if (port && took >= 200) port.postMessage("tm " + (s.n + 1) + " 0 0 " + took + " " + took + " 0");
       if (settle()) landed(s, img, mode);
       later();
     };

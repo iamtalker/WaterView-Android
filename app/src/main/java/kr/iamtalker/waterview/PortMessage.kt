@@ -139,7 +139,16 @@ internal sealed interface PortMessage {
      * How long a slow PDF page took, in milliseconds: how long it [waited] to be started, how long
      * pdf.js took to [load] it, and how long it took to draw in [total]. Goes to the diagnostic log.
      */
-    data class Timing(val page: Int, val waited: Int, val load: Int, val total: Int) : PortMessage
+    data class Timing(
+        val page: Int,
+        val waited: Int,
+        val load: Int,
+        val total: Int,
+        /** From the page being asked for to its picture being there; 0 when it was not asked for by a turn. */
+        val sinceTurn: Int = 0,
+        /** How long finding the page took before it was drawn, within [sinceTurn]. */
+        val placed: Int = 0,
+    ) : PortMessage
 }
 
 /**
@@ -177,11 +186,11 @@ internal fun parsePortMessage(data: String?): PortMessage? {
         val words = said.drop(2).joinToString(" ").take(SNIPPET_MAX)
         return PortMessage.Offset(at, words)
     }
-    // "tm <page> <waited> <load> <total>", four whole numbers and nothing else
-    if (said[0] == "tm" && said.size == 5) {
+    // "tm <page> <waited> <load> <total> <since> <placed>", six whole numbers and nothing else
+    if (said[0] == "tm" && said.size == 7) {
         val nums = said.drop(1).map { it.toIntOrNull() ?: return null }
         if (nums.any { it < 0 || it > 3_600_000 } || nums[0] < 1) return null
-        return PortMessage.Timing(nums[0], nums[1], nums[2], nums[3])
+        return PortMessage.Timing(nums[0], nums[1], nums[2], nums[3], nums[4], nums[5])
     }
     if (said.size != 3) return null
 

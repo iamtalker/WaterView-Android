@@ -357,9 +357,10 @@ function blank(slot) {
  * to be started, how long pdf.js took to load it, and how long it took to draw in all, in
  * milliseconds. Only the slow ones, so the log of a long read is not all fast pages.
  */
-function reportTiming(n, waited, loaded, total) {
-  if (!searchPort || total < 200) return;
-  searchPort.postMessage("tm " + n + " " + Math.round(waited) + " " + Math.round(loaded) + " " + Math.round(total));
+function reportTiming(n, waited, loaded, total, since, placed) {
+  if (!searchPort || (total < 200 && since < 300)) return;
+  searchPort.postMessage("tm " + n + " " + Math.round(waited) + " " + Math.round(loaded) + " " + Math.round(total) +
+    " " + Math.round(since) + " " + Math.round(placed));
 }
 
 function pump() {
@@ -799,7 +800,10 @@ function draw(slot) {
     });
   }).then(function () {
     slot.state = "drawn";
-    reportTiming(slot.n, tWaited, tLoaded, performance.now() - tStart);
+    reportTiming(slot.n, tWaited, tLoaded, performance.now() - tStart,
+      slot.tTurn ? performance.now() - slot.tTurn : 0, slot.tPlace || 0);
+    slot.tTurn = 0;
+    slot.tPlace = 0;
     /*
      * Night mode moved while this was being drawn, so the picture that just arrived is
      * of the wrong one. Ask for it again, keeping this one up meanwhile; the mode is read
@@ -2453,7 +2457,11 @@ function onCommand(msg) {
     var n = Math.floor(Number(msg.slice(1)));
     if (!doc || !slots.length || !(n >= 1 && n <= slots.length)) return;
     var target = slots[n - 1];
+    /* For the diagnostic log: when the turn was asked for, and how long finding the page took */
+    var turned = performance.now();
+    target.tTurn = turned;
     place(target).then(function () {
+      target.tPlace = performance.now() - turned;
       want(target);
       pump();
       reportPage();
