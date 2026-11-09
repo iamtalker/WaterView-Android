@@ -128,18 +128,6 @@ class MainActivity : AppCompatActivity() {
             if (uri != null) openInViewer(uri)
         }
 
-    private val openTree =
-        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            if (uri != null) {
-                runCatching {
-                    contentResolver.takePersistableUriPermission(
-                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
-                }
-                render()
-            }
-        }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -203,7 +191,6 @@ class MainActivity : AppCompatActivity() {
         val openFile = View.OnClickListener { openDocument.launch(arrayOf("*/*")) }
         fab.setOnClickListener(openFile)
         findViewById<View>(R.id.openFileButton).setOnClickListener(openFile)
-        findViewById<View>(R.id.addFolderButton).setOnClickListener { openTree.launch(null) }
 
         restoreStack(savedInstanceState)
         restoreFilters(savedInstanceState)
@@ -579,20 +566,14 @@ class MainActivity : AppCompatActivity() {
         // Labelled first, then sorted. sortedBy runs its selector on every comparison,
         // so naming the tree inside it cost a provider query per comparison rather than
         // one per folder.
-        val roots = contentResolver.persistedUriPermissions
-            .filter { it.isReadPermission && isTreeUri(it.uri) }
-            .map { it to treeLabel(it.uri) }
-            .sortedBy { (_, label) -> label.lowercase() }
-
         // Nothing opened and nothing granted is a first run, and a first run gets the
         // welcome block in place of the list rather than two empty headings above three
         // paragraphs about what this is. Once either has happened the reader knows, and
         // the ordinary list comes back for good. A row waiting on its Undo bar still
         // counts, so undoing the last one never has to bring the list back.
-        if (recents.isEmpty() && roots.isEmpty()) return Screen(emptyList(), welcome = true)
+        if (recents.isEmpty()) return Screen(emptyList(), welcome = true)
         val shownRecents = recents.filter { it.uri != hidden }
         val visibleRecents = shownRecents.take(recentLimit)
-        val shownRoots = roots.filter { (perm, _) -> perm.uri.toString() != hidden }
 
         val rows = mutableListOf<Row>()
         rows += Row.Header(getString(R.string.recent_files))
@@ -630,45 +611,9 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        rows += Row.Header(getString(R.string.folders))
-        if (shownRoots.isEmpty()) rows += Row.Hint(getString(R.string.no_folders_hint))
-        shownRoots.forEach { (perm, label) ->
-            rows += Row.Item(
-                "DIR", DIR_COLOR, label, null,
-                onClick = {
-                    stack.addLast(
-                        Crumb(perm.uri, DocumentsContract.getTreeDocumentId(perm.uri), label)
-                    )
-                    render()
-                },
-                onRemove = { kept ->
-                    askToRemove(
-                        R.string.remove_folder_title,
-                        getString(R.string.remove_folder_message, label),
-                        kept
-                    ) {
-                        removeLater(perm.uri.toString()) {
-                            // Write as well as read: a build that could rename files took both
-                            // for a folder, and giving back only the read half left the write
-                            // half behind, out of sight, since the list shows read grants only.
-                            // Releasing a half that is not held changes nothing.
-                            runCatching {
-                                contentResolver.releasePersistableUriPermission(
-                                    perm.uri,
-                                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                                )
-                            }
-                            Thumbs.forgetFolder(this, perm.uri)
-                        }
-                    }
-                }
-            )
-        }
-        rows += Row.Item("+", ADD_COLOR, getString(R.string.add_folder), null,
-            onClick = { openTree.launch(null) })
-        // The first run's tip, which goes with the welcome block: neither the button nor the
-        // Add row opens a file from another app.
+        // The first run's tip, which goes with the welcome block: the welcome block's button does not
+        // open a file from another app either. Folders are not listed here: a folder is granted from a
+        // photo opened outside, in ViewerActivity, and its photos are swiped through there.
         rows += Row.Hint(getString(R.string.open_with_hint))
         return Screen(rows)
     }

@@ -172,14 +172,6 @@
                     android:minWidth="@dimen/welcome_action_min_width"
                     android:text="@string/open_a_file" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/addFolderButton"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:minWidth="@dimen/welcome_action_min_width"
-                    android:text="@string/add_folder" />
 
                 <!-- Opening a file from another app is the route neither button shows, so a
                      first run names it here as well as in About. -->

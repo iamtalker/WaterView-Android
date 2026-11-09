@@ -236,16 +236,11 @@ open class ViewerActivity : AppCompatActivity() {
     /** Rotate, offered for a photo the tiling view draws. */
     private var rotateItem: MenuItem? = null
 
-    // Answers the photo permission asked for when a photo from outside opens: see showOutsidePhoto
-    private var onPhotoPermission: ((Boolean) -> Unit)? = null
-    private val photoPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        onPhotoPermission?.invoke(granted)
-        onPhotoPermission = null
-    }
-    // All files access is switched on in Settings, which answers nothing: the switch is read back on return
-    private val allFilesAccess = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        onPhotoPermission?.invoke(MediaFolders.allFiles())
-        onPhotoPermission = null
+    // Answers the folder picker opened for a photo from outside: see showOutsidePhoto
+    private var onFolderPicked: ((Uri?) -> Unit)? = null
+    private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+        onFolderPicked?.invoke(tree)
+        onFolderPicked = null
     }
 
     private val trashPrompt = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
@@ -2050,49 +2045,62 @@ open class ViewerActivity : AppCompatActivity() {
      * when the index does not know the photo, it is shown alone.
      */
     private fun showOutsidePhoto(container: FrameLayout, uri: Uri, name: String, ext: String) {
-        val ready = MediaFolders.allFiles() || (Build.VERSION.SDK_INT < 30 && MediaFolders.granted(this))
-        if (ready) {
-            listMediaPhotos(container, uri, name, ext)
+        val photoDoc = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+        if (photoDoc == null) {
+            showPicture(container, uri, name, ext)
             return
         }
-        onPhotoPermission = { granted ->
-            if (granted) listMediaPhotos(container, uri, name, ext)
-            else showPicture(container, uri, name, ext)
+        // A folder already granted that holds the photo: its neighbours are a swipe away at once
+        grantedFolderOf(photoDoc)?.let { tree ->
+            openFromFolder(tree, photoDoc)
+            return
         }
-        if (Build.VERSION.SDK_INT >= 30) {
-            allFilesAccess.launch(
-                android.content.Intent(
-                    android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                    Uri.parse("package:$packageName"),
-                )
-            )
-        } else {
-            photoPermission.launch(MediaFolders.permission)
+        // Otherwise the picker opens on the photo's own folder, and one tap grants it
+        onFolderPicked = { tree ->
+            val held = tree?.takeIf { it.isFolderOf(photoDoc) }
+            if (held != null) {
+                runCatching {
+                    contentResolver.takePersistableUriPermission(held, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                openFromFolder(held, photoDoc)
+            } else {
+                showPicture(container, uri, name, ext)
+            }
         }
+        folderPicker.launch(folderOf(uri))
     }
 
-    private fun listMediaPhotos(container: FrameLayout, uri: Uri, name: String, ext: String) {
-        offMain({ found: Pair<MediaFolders.MediaPhoto, List<MediaFolders.MediaPhoto>>? ->
-            if (found == null) showPicture(container, uri, name, ext)
-            else showMediaPhotos(container, found.first, found.second)
-        }) { app -> MediaFolders.folderPhotos(uri) ?: MediaFolders.photosBeside(app, uri) }
+    /** The granted folder that holds the document [docId], if any. */
+    private fun grantedFolderOf(docId: String): Uri? =
+        contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission && DocumentsContract.isTreeUri(it.uri) }
+            .map { it.uri }
+            .firstOrNull { it.isFolderOf(docId) }
+
+    /** Whether the document [docId] lies inside this granted folder. */
+    private fun Uri.isFolderOf(docId: String): Boolean {
+        val folder = runCatching { DocumentsContract.getTreeDocumentId(this) }.getOrNull() ?: return false
+        val prefix = if (folder.endsWith(":") || folder.endsWith("/")) folder else "$folder/"
+        return docId.startsWith(prefix)
     }
 
-    /** The photos of a folder read from the media index, swiped through as the photos of a folder added here are. */
-    private fun showMediaPhotos(container: FrameLayout, opened: MediaFolders.MediaPhoto, photos: List<MediaFolders.MediaPhoto>) {
-        val docs = photos.map { ChildDoc(it.uri.toString(), it.name, it.mime, 0, 0) }
-        val at = photos.indexOfFirst { it.uri == opened.uri }.takeIf { it >= 0 } ?: 0
-        val pager = PhotoPager(
-            this, opened.uri, docs[at], photoHost,
-            uriOverride = { Uri.parse(it.docId) },
+    /** The folder a document sits in, as the picker's starting point. Null when it can't be told. */
+    private fun folderOf(uri: Uri): Uri? {
+        val docId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull() ?: return null
+        val volume = docId.substringBefore(':', "")
+        if (volume.isEmpty()) return null
+        val parent = if (docId.contains('/')) docId.substringBeforeLast('/') else "$volume:"
+        return DocumentsContract.buildDocumentUri(uri.authority, parent)
+    }
+
+    /** Opens the photo from inside its granted folder, which is what lets the photos beside it be swiped to. */
+    private fun openFromFolder(tree: Uri, photoDoc: String) {
+        startActivity(
+            Intent()
+                .setClassName(this, INTERNAL_VIEWER)
+                .setData(DocumentsContract.buildDocumentUriUsingTree(tree, photoDoc))
         )
-        photoPager = pager
-        photosListed = true
-        countsPhotos = true
-        pageIndicator.isClickable = false
-        findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_delete).isVisible = false
-        container.addView(pager.view, matchParent())
-        pager.fill(docs, at)
+        finish()
     }
 
     /** Pages in the same folder of a ZIP are a comic, with the usual swipe reader. */

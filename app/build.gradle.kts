@@ -13,8 +13,8 @@ android {
         applicationId = "kr.iamtalker.waterview"
         minSdk = 26
         targetSdk = 36
-        versionCode = 28
-        versionName = "0.2.25"
+        versionCode = 29
+        versionName = "0.2.26"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // A device test that hangs blocks the whole nightly run behind it, and
@@ -182,13 +182,6 @@ android {
 val permissionAllowlistSuffixes = setOf(
     "android.permission.INTERNET",
     "android.permission.REQUEST_INSTALL_PACKAGES",
-    // Lists the other photos in the folder of a photo opened from outside, from the media index:
-    // asked for once, when such a photo is first opened. See MediaFolders.
-    "android.permission.READ_MEDIA_IMAGES",
-    "android.permission.READ_EXTERNAL_STORAGE",
-    // All files access: the folder of a photo opened from outside is read by its path, which the
-    // media index cannot do for a .nomedia folder or an unscanned SD card. Asked for in Settings.
-    "android.permission.MANAGE_EXTERNAL_STORAGE",
     // androidx.core declares this so libraries can registerReceiver(..., RECEIVER_NOT_EXPORTED).
     // Signature level and self-granted, so it is never shown to the user as a permission.
     ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"

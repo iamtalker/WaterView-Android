@@ -127,6 +127,10 @@ internal class RowAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
                 // actions, as dismiss, the action a view that can be swiped away has, and
                 // rows that stay must not offer it.
                 val remove = row.onRemove
+                // A long press is how a row is removed, as in most apps; the swipe stays too.
+                holder.itemView.setOnLongClickListener(
+                    remove?.let { ask -> View.OnLongClickListener { ask {}; true } }
+                )
                 ViewCompat.replaceAccessibilityAction(
                     holder.itemView, AccessibilityActionCompat.ACTION_DISMISS,
                     remove?.let { holder.itemView.context.getString(R.string.remove) },
