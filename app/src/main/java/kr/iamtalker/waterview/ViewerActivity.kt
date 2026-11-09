@@ -278,6 +278,11 @@ open class ViewerActivity : AppCompatActivity() {
         // After the search bar's, so it is asked first: what it closes is over the whole page
         onBackPressedDispatcher.addCallback(this, coverBackCallback)
         pageIndicator.setOnClickListener { askForPage() }
+        // The readout in the bottom bar asks for a page the same way, for PDFs and comics
+        findViewById<TextView>(R.id.bottomPageCounter).apply {
+            isClickable = true
+            setOnClickListener { askForPage() }
+        }
         findViewById<View>(R.id.bottomSettings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
@@ -1155,8 +1160,11 @@ open class ViewerActivity : AppCompatActivity() {
     /** Page controls snap PDFs to a page; side taps do so when that preference is on. */
     private fun turnPage(forward: Boolean, pageButton: Boolean = false) {
         val kind = currentKind ?: return
-        // Past the last page, forward goes on to the next file in the folder, if there is one
-        if (forward && atLastPage() && openNextInFolder()) return
+        // Past the last page, forward goes on to the next file in the folder, and stays put if there is none
+        if (forward && atLastPage()) {
+            openNextInFolder()
+            return
+        }
         val pager = photoPager
         if (pager != null && pager.count > 1) {
             if (forward) pager.next() else pager.previous()

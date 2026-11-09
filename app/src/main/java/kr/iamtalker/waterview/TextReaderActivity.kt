@@ -134,7 +134,7 @@ class TextReaderActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             addView(seek, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(percent, LinearLayout.LayoutParams(dp(72), ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(percent, LinearLayout.LayoutParams(dp(110), ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         val previous = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
             text = "‹"
@@ -326,13 +326,29 @@ class TextReaderActivity : AppCompatActivity() {
         val at = topOffset()
         val fraction = at.toLong() * 1000 / text.length
         if (!seeking) seek.progress = fraction.toInt()
-        percent.text = "${fraction / 10}.${fraction % 10}%"
+        val (current, total) = screenPages()
+        percent.text = "$current / $total"
+    }
+
+    /** The screen the text is on, and how many screens the whole text makes, a screen counting as a page. */
+    private fun screenPages(): Pair<Int, Int> {
+        val h = list.height.coerceAtLeast(1)
+        val range = list.computeVerticalScrollRange().coerceAtLeast(h)
+        val total = (range + h - 1) / h
+        val current = (list.computeVerticalScrollOffset() / h + 1).coerceIn(1, total)
+        return Pair(current, total)
     }
 
     private fun jumpTo(offset: Long) {
         if (starts.isEmpty()) return
         val at = offset.coerceIn(0, text.length.toLong() - 1).toInt()
-        (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(pieceOf(at), 0)
+        if (at >= text.length - 1) {
+            // The very end: put the last piece at the bottom of the screen, not the top, so the last screen shows
+            list.scrollToPosition(starts.size - 1)
+            list.post { list.scrollBy(0, list.height * 4) }
+        } else {
+            (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(pieceOf(at), 0)
+        }
         showPosition()
     }
 
@@ -437,7 +453,7 @@ class TextReaderActivity : AppCompatActivity() {
     /** The place along the text, as a percent, asked for and gone to. */
     private fun askForPercent() {
         if (text.isEmpty()) return
-        val current = (topOffset().toLong() * 100 / text.length).toInt()
+        val (current, total) = screenPages()
         val entry = EditText(this).apply {
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             setText(current.toString())
@@ -445,12 +461,17 @@ class TextReaderActivity : AppCompatActivity() {
         }
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.go_to_page)
-            .setMessage("0 ~ 100 %")
+            .setMessage(getString(R.string.page_range, total))
             .setView(entry)
             .setPositiveButton(R.string.go) { _, _ ->
                 val p = entry.text.toString().toIntOrNull()
-                if (p != null && p in 0..100) jumpTo(text.length.toLong() * p / 100)
-                else Toast.makeText(this, "0 ~ 100", Toast.LENGTH_SHORT).show()
+                if (p != null && p in 1..total) {
+                    // Place the page by its share of the whole, which the list's own length measures
+                    val share = if (total > 1) (p - 1).toDouble() / (total - 1) else 0.0
+                    jumpTo((text.length * share).toLong())
+                } else {
+                    Toast.makeText(this, getString(R.string.page_range, total), Toast.LENGTH_SHORT).show()
+                }
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
