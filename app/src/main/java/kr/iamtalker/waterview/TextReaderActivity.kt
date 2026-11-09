@@ -178,6 +178,14 @@ class TextReaderActivity : AppCompatActivity() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 if (!seeking) showPosition()
             }
+
+            // Saved once the text comes to rest, so a place is kept when the app is killed
+            // rather than closed, which never reaches onStop
+            override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                if (newState != RecyclerView.SCROLL_STATE_IDLE) return
+                val k = key
+                if (k != null && index != null) Marks.setLeftAt(this@TextReaderActivity, k, topByte())
+            }
         })
         seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
@@ -273,9 +281,10 @@ class TextReaderActivity : AppCompatActivity() {
     }
 
     /** The first row of page [page]. */
-    private fun rowForPage(page: Int): Int {
+    private fun rowForPage(page: Int, height: Float = pageHeight()): Int {
         val idx = index ?: return 0
-        return ((page - 1) * pageHeight() / rowPx).toInt().coerceIn(0, maxOf(0, idx.rowCount - 1))
+        // Rounded up: currentPage() rounds down, so a row found by rounding down would read as the page before
+        return kotlin.math.ceil((page - 1) * height / rowPx).toInt().coerceIn(0, maxOf(0, idx.rowCount - 1))
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -407,13 +416,13 @@ class TextReaderActivity : AppCompatActivity() {
         val q = query
         if (q.isNullOrEmpty()) return row
         val span = SpannableString(row)
-        var at = row.indexOf(q)
+        var at = row.indexOf(q, ignoreCase = true)
         while (at >= 0) {
             span.setSpan(
                 BackgroundColorSpan(Color.parseColor("#FFEB3B")),
                 at, at + q.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
             )
-            at = row.indexOf(q, at + q.length)
+            at = row.indexOf(q, at + q.length, ignoreCase = true)
         }
         return span
     }
@@ -527,6 +536,9 @@ class TextReaderActivity : AppCompatActivity() {
         val idx = index ?: return
         if (rowPx <= 0f || idx.rowCount == 0) return
         val total = totalPages()
+        // The height of a page now, before the keyboard comes up: with it up the list is shorter, and a row
+        // worked out from that short page reads as a much earlier page once the keyboard is gone
+        val pageH = pageHeight()
         val entry = EditText(this).apply {
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             setText(currentPage().toString())
@@ -539,8 +551,16 @@ class TextReaderActivity : AppCompatActivity() {
             .setPositiveButton(R.string.go) { _, _ ->
                 val n = entry.text.toString().toIntOrNull()
                 if (n != null && n in 1..total) {
-                    (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(rowForPage(n), 0)
-                    list.post { showPosition() }
+                    val row = rowForPage(n, pageH)
+                    Diag.log(
+                        this,
+                        "text: go to page $n of $total row=$row of ${idx.rowCount} rowPx=${"%.1f".format(rowPx)} pageHeight=${"%.0f".format(pageH)} now=${"%.0f".format(pageHeight())}"
+                    )
+                    (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(row, 0)
+                    list.post {
+                        showPosition()
+                        Diag.log(this, "text: after jump top row=${topRow()} shows ${currentPage()} of ${totalPages()}")
+                    }
                     showPosition()
                 } else {
                     Toast.makeText(this, getString(R.string.page_range, total), Toast.LENGTH_SHORT).show()

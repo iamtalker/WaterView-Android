@@ -79,7 +79,7 @@ internal class TextIndex private constructor(
             for (i in 0 until limit) {
                 var same = true
                 for (j in needle.indices) {
-                    if (buf[i + j] != needle[j]) {
+                    if (lower(buf[i + j]) != lower(needle[j])) {
                         same = false
                         break
                     }
@@ -97,6 +97,13 @@ internal class TextIndex private constructor(
     }
 
     companion object {
+        /**
+         * An ASCII capital as its small letter, any other byte as it is. The text is UTF-8 or a Korean code
+         * page, where a byte in A-Z is always that letter and never part of another character, so a search
+         * can ignore the case of English words byte by byte.
+         */
+        private fun lower(b: Byte): Byte = if (b in 0x41..0x5A) (b + 0x20).toByte() else b
+
         /** A line longer than this is shown in pieces of about this size, so one row never gets huge. */
         private const val MAX_ROW = 16 * 1024
         private const val COPY_NAME = "text-reader.txt"

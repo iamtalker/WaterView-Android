@@ -1839,6 +1839,7 @@ open class ViewerActivity : AppCompatActivity() {
                             pageTotal = said.of
                             setPageIndicatorText()
                             showPageIndicator()
+                            savePositionSoon()
                         }
                         is PortMessage.SearchCount ->
                             onSearchCount?.invoke(said.at, said.total, said.done)
@@ -2125,6 +2126,7 @@ open class ViewerActivity : AppCompatActivity() {
         container.addView(pager.view, matchParent())
         offMain({ found: Pair<List<ChildDoc>, Int>? ->
             photosListed = true
+            Diag.log(this, "photos: folder listing ${found?.first?.size ?: "failed"} at ${found?.second}, tree=${DocumentsContract.isTreeUri(uri)}")
             found?.let { (photos, at) -> pager.fill(photos, at) }
             // No fill names a photo alone in its folder, so its Delete comes in here. Not once
             // the page has gone, taking the folder's photos with it.
@@ -2150,19 +2152,45 @@ open class ViewerActivity : AppCompatActivity() {
             openFromFolder(tree, photoDoc)
             return
         }
+        // A photo handed over by the Downloads or media provider has an id that says nothing of its
+        // folder, so it is looked for by name and size in the folders already granted
+        val size = sizeOf(uri)
+        contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission && DocumentsContract.isTreeUri(it.uri) }
+            .firstNotNullOfOrNull { grant -> findByNameIn(grant.uri, name, size)?.let { grant.uri to it } }
+            ?.let { (tree, doc) ->
+                openFromFolder(tree, doc)
+                return
+            }
         // Otherwise the picker opens on the photo's own folder, and one tap grants it
         onFolderPicked = { tree ->
             val held = tree?.takeIf { it.isFolderOf(photoDoc) }
-            if (held != null) {
+            val inside = if (held == null && tree != null) findByNameIn(tree, name, size) else null
+            if (held != null || (tree != null && inside != null)) {
+                val granted = (held ?: tree)!!
                 runCatching {
-                    contentResolver.takePersistableUriPermission(held, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    contentResolver.takePersistableUriPermission(granted, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                openFromFolder(held, photoDoc)
+                openFromFolder(granted, inside ?: photoDoc)
             } else {
                 showPicture(container, uri, name, ext)
             }
         }
         folderPicker.launch(folderOf(uri))
+    }
+
+    /** The size of the document in bytes, or 0 when its provider does not say. */
+    private fun sizeOf(uri: Uri): Long = runCatching {
+        contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)
+            ?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else 0L }
+    }.getOrNull() ?: 0L
+
+    /** The id, inside the folder granted as [tree], of a file called [name] and of [size] bytes, if there is one. */
+    private fun findByNameIn(tree: Uri, name: String, size: Long): String? {
+        val root = runCatching { DocumentsContract.getTreeDocumentId(tree) }.getOrNull() ?: return null
+        return childrenOf(contentResolver, tree, root)
+            ?.firstOrNull { it.name == name && (size <= 0L || it.size <= 0L || it.size == size) }
+            ?.docId
     }
 
     /** The granted folder that holds the document [docId], if any. */
@@ -2181,6 +2209,8 @@ open class ViewerActivity : AppCompatActivity() {
 
     /** The folder a document sits in, as the picker's starting point. Null when it can't be told. */
     private fun folderOf(uri: Uri): Uri? {
+        // Only the storage provider's ids say where a file is; the Downloads and media providers' do not
+        if (uri.authority != "com.android.externalstorage.documents") return null
         val docId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull() ?: return null
         val volume = docId.substringBefore(':', "")
         if (volume.isEmpty()) return null
@@ -2224,6 +2254,25 @@ open class ViewerActivity : AppCompatActivity() {
         findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_delete).isVisible = false
         container.addView(pager.view, matchParent())
         pager.fill(docs, at)
+        // Wide pages are split now, from their sizes, so the number of pages is right from the start
+        if (Settings.splitWidePages(this)) {
+            offMain({ sizes: Map<String, Pair<Int, Int>> ->
+                if (photoPager === pager) {
+                    pager.presplit(sizes)
+                    Diag.log(this, "comic: wide pages split, ${pager.count} pages")
+                }
+            }) { app ->
+                docs.mapNotNull { doc ->
+                    runCatching {
+                        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        app.contentResolver.openInputStream(Uri.parse(doc.docId))?.use {
+                            android.graphics.BitmapFactory.decodeStream(it, null, bounds)
+                        }
+                        if (bounds.outWidth > 0 && bounds.outHeight > 0) doc.docId to (bounds.outWidth to bounds.outHeight) else null
+                    }.getOrNull()
+                }.toMap()
+            }
+        }
     }
 
     private val photoHost = object : PhotoPager.Host {
@@ -2259,6 +2308,7 @@ open class ViewerActivity : AppCompatActivity() {
             showPageIndicator()
             // One photo left after a delete, which has no count to show
             if (of < 2) pageFader.hideNow()
+            savePositionSoon()
         }
     }
 
@@ -3049,6 +3099,18 @@ open class ViewerActivity : AppCompatActivity() {
             .setItems(bookmarkLabels(marks)) { _, which -> Marks.remove(this, key, marks[which].at) }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    private val saveHandler = Handler(Looper.getMainLooper())
+    private val saveLater = Runnable { savePosition() }
+
+    /**
+     * Saves the place a moment after the reader stops moving, so that it is kept when the app is killed
+     * rather than closed: onStop is not called then. A turn of the page puts the save off again.
+     */
+    private fun savePositionSoon() {
+        saveHandler.removeCallbacks(saveLater)
+        saveHandler.postDelayed(saveLater, 800)
     }
 
     private fun savePosition() {

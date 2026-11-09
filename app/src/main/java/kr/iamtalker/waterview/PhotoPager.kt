@@ -127,6 +127,48 @@ internal class PhotoPager(
     /** The tiling view drawing the photo on screen, or null where it isn't drawn by one. */
     val stillShown: StillPhotoView? get() = pageAt(view.currentItem)?.still
 
+    /**
+     * Splits every wide photo whose size is in [sizes] (width, height) into its two halves at once, so the
+     * page count is right from the start and does not grow as wide pages are reached. The page on show
+     * stays on show.
+     */
+    fun presplit(sizes: Map<String, Pair<Int, Int>>) {
+        if (!splitWidePages || sizes.isEmpty()) return
+        val onShow = photos.getOrNull(firstIndex(view.currentItem))?.docId ?: return
+        var changed = false
+        val out = ArrayList<ChildDoc>(photos.size + 16)
+        for (photo in photos) {
+            val size = sizes[photo.docId]
+            if (size == null || photo.docId in splitRegions || photo.docId in splitSources ||
+                size.first <= size.second * WIDE_PAGE_RATIO
+            ) {
+                out += photo
+                continue
+            }
+            val width = size.first
+            val height = size.second
+            val middle = width / 2
+            val firstRect = if (rightToLeft) Rect(middle, 0, width, height) else Rect(0, 0, middle, height)
+            val secondRect = if (rightToLeft) Rect(0, 0, middle, height) else Rect(middle, 0, width, height)
+            val a = photo.copy(docId = "${photo.docId}#wvhalf-a")
+            val b = photo.copy(docId = "${photo.docId}#wvhalf-b")
+            splitSources[a.docId] = photo
+            splitSources[b.docId] = photo
+            splitRegions[a.docId] = firstRect
+            splitRegions[b.docId] = secondRect
+            out += a
+            out += b
+            changed = true
+        }
+        if (!changed) return
+        photos = out
+        pages.notifyDataSetChanged()
+        val at = photos.indexOfFirst { it.docId == onShow || it.docId == "$onShow#wvhalf-a" }
+        if (at >= 0) view.setCurrentItem(at / step, false)
+        // The count has changed even where the page on show has not, and no page change says so
+        announce(view.currentItem)
+    }
+
     /** Puts the folder's other photos either side of the one opened, which stays on screen. */
     fun fill(all: List<ChildDoc>, at: Int) {
         if (photos.size != 1 || all.size < 2 || all.getOrNull(at)?.docId != photos[0].docId) return

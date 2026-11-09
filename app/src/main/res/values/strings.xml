@@ -10,7 +10,7 @@
     <string name="pdf_settings">PDF 보기</string>
     <string name="pdf_reading_mode">페이지 넘김 방식</string>
     <string name="text_settings">TXT 보기</string>
-    <string name="text_reading_mode">페이지 넘김 방식</string>
+    <string name="text_reading_mode">페이지 넘김 방식 (Markdown 등)</string>
     <string name="text_reading_mode_scroll">세로 스크롤</string>
     <string name="text_reading_mode_horizontal">가로 페이지 넘김</string>
     <string name="pdf_reading_mode_scroll">세로 스크롤</string>
