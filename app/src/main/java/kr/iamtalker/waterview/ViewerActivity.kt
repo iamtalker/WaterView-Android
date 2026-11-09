@@ -236,6 +236,13 @@ open class ViewerActivity : AppCompatActivity() {
     /** Rotate, offered for a photo the tiling view draws. */
     private var rotateItem: MenuItem? = null
 
+    // Answers the photo permission asked for when a photo from outside opens: see showOutsidePhoto
+    private var onPhotoPermission: ((Boolean) -> Unit)? = null
+    private val photoPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        onPhotoPermission?.invoke(granted)
+        onPhotoPermission = null
+    }
+
     private val trashPrompt = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
         val photo = trashing ?: return@registerForActivityResult
         trashing = null
@@ -365,6 +372,8 @@ open class ViewerActivity : AppCompatActivity() {
                         fromWaterView && archivePhotoUris.size > 1 ->
                             showArchivePhotos(container, uri, archivePhotoUris)
                         fromWaterView && DocumentsContract.isTreeUri(uri) -> showPhotos(container, uri, name, mime)
+                        kind == FileKind.IMAGE && !DocumentsContract.isTreeUri(uri) &&
+                            !ArchiveProvider.isEntry(this, uri) -> showOutsidePhoto(container, uri, name, ext)
                         kind == FileKind.IMAGE -> showPicture(container, uri, name, ext)
                         else -> showWeb(container, uri, kind, name, ext)
                     }
@@ -2028,6 +2037,47 @@ open class ViewerActivity : AppCompatActivity() {
                 findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_delete).isVisible = mayTrash(pager.shown)
             }
         }) { app -> photosAround(app.contentResolver, uri, Settings.sortOrder(app)) }
+    }
+
+    /**
+     * A photo not opened from a folder added in WaterView. Its folder's photos come from the phone's
+     * media index, which takes the photo permission: asked for once, then never again. Refused, or
+     * when the index does not know the photo, it is shown alone.
+     */
+    private fun showOutsidePhoto(container: FrameLayout, uri: Uri, name: String, ext: String) {
+        if (MediaFolders.granted(this)) {
+            listMediaPhotos(container, uri, name, ext)
+            return
+        }
+        onPhotoPermission = { granted ->
+            if (granted) listMediaPhotos(container, uri, name, ext)
+            else showPicture(container, uri, name, ext)
+        }
+        photoPermission.launch(MediaFolders.permission)
+    }
+
+    private fun listMediaPhotos(container: FrameLayout, uri: Uri, name: String, ext: String) {
+        offMain({ found: Pair<MediaFolders.MediaPhoto, List<MediaFolders.MediaPhoto>>? ->
+            if (found == null) showPicture(container, uri, name, ext)
+            else showMediaPhotos(container, found.first, found.second)
+        }) { app -> MediaFolders.photosBeside(app, uri) }
+    }
+
+    /** The photos of a folder read from the media index, swiped through as the photos of a folder added here are. */
+    private fun showMediaPhotos(container: FrameLayout, opened: MediaFolders.MediaPhoto, photos: List<MediaFolders.MediaPhoto>) {
+        val docs = photos.map { ChildDoc(it.uri.toString(), it.name, it.mime, 0, 0) }
+        val at = photos.indexOfFirst { it.uri == opened.uri }.takeIf { it >= 0 } ?: 0
+        val pager = PhotoPager(
+            this, opened.uri, docs[at], photoHost,
+            uriOverride = { Uri.parse(it.docId) },
+        )
+        photoPager = pager
+        photosListed = true
+        countsPhotos = true
+        pageIndicator.isClickable = false
+        findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_delete).isVisible = false
+        container.addView(pager.view, matchParent())
+        pager.fill(docs, at)
     }
 
     /** Pages in the same folder of a ZIP are a comic, with the usual swipe reader. */

@@ -5,9 +5,16 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-    <!-- No permissions at all: files arrive via SAF or Open-with grants, rendering is fully offline.
+    <!-- The photo permission, asked for once when a photo from outside opens, so the other photos in
+         its folder can be swiped through. Android 13 and later use READ_MEDIA_IMAGES; older versions
+         use READ_EXTERNAL_STORAGE. Nothing else reads storage: files still arrive via SAF or Open-with
+         grants, and rendering is fully offline. See MediaFolders.
          Media3 contributes ACCESS_NETWORK_STATE for streaming bitrate choice, stripped below because
          WaterView only ever plays local files. The checkPermissions task fails the build on any others. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
     <uses-permission
         android:name="android.permission.ACCESS_NETWORK_STATE"
         tools:node="remove" />
