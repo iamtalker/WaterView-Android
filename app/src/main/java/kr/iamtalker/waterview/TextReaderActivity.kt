@@ -362,12 +362,25 @@ class TextReaderActivity : AppCompatActivity() {
         }
         val snapshot = text
         val size = textSizeSp
+        val cacheKey = "${snapshot.hashCode()}:${snapshot.length}:$width:$size"
+        // Kept for the process, so reopening the same text at the same size does not measure it again
+        if (PageCache.key == cacheKey) {
+            pageStarts = PageCache.starts
+            pagesFor = Pair(width, size)
+            then()
+            return
+        }
         pager.execute {
             Diag.log(this, "text: pages start chars=${snapshot.length} w=$width h=$height size=$size")
             val breaks = runCatching { computePages(snapshot, width, height, size) }
                 .onFailure { Diag.log(this, "text: pages failed ${it.javaClass.simpleName} ${it.message}") }
                 .getOrDefault(IntArray(0))
             Diag.log(this, "text: pages done count=${breaks.size}")
+            // Kept even if the screen has gone meanwhile, so the next opening has them at once
+            if (breaks.isNotEmpty()) {
+                PageCache.key = cacheKey
+                PageCache.starts = breaks
+            }
             runOnUiThread {
                 if (isDestroyed || snapshot != text) {
                     Diag.log(this, "text: pages dropped destroyed=$isDestroyed changed=${snapshot != text}")
@@ -654,6 +667,12 @@ class TextReaderActivity : AppCompatActivity() {
     }
 
     private class ChunkHolder(val view: TextView) : RecyclerView.ViewHolder(view)
+
+    /** The page starts of the last text measured, with the key it was measured under. See ensurePages. */
+    private object PageCache {
+        @Volatile var key: String? = null
+        @Volatile var starts = IntArray(0)
+    }
 
     private companion object {
         const val PREFS = "text_reader"
