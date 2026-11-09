@@ -45,6 +45,9 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.Charset
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.IntentSenderRequest
@@ -387,6 +390,7 @@ open class ViewerActivity : AppCompatActivity() {
             }
             setUpSearch(toolbar, kind)
             setUpActions(toolbar, kind, uri, name, ext, mime)
+            setUpReadAloud(toolbar, kind, uri)
             // A document that opens turned over opens with the parts around it dark as well
             if (loadedNight) nightChrome.show(true)
         }
@@ -1733,7 +1737,16 @@ open class ViewerActivity : AppCompatActivity() {
                         // Only a PDF and a Word document have pages to report. Any other
                         // page saying so is its document talking, and is not given a
                         // readout to write in.
+                        is PortMessage.Speech -> pdfSpeech?.let {
+                            if (it.length < 2_000_000) it.append(said.text)
+                        }
+                        is PortMessage.SpeechDone -> if (pdfSpeech != null) finishPdfSpeech()
                         is PortMessage.Page -> if (kind.paged) {
+                            // The page is up, so it can send its text: the item shows for a PDF now
+                            if (kind == FileKind.PDF) {
+                                findViewById<MaterialToolbar>(R.id.toolbar).menu
+                                    .findItem(R.id.action_read_aloud)?.isVisible = true
+                            }
                             if (pageTotal == 0) {
                                 goToPageItem?.isVisible = !book
                                 contentsItem?.isVisible = book
@@ -2718,8 +2731,76 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /** A track may play on with the screen off: see [PlayerScreen.stopped]. */
+    /** The read-aloud item of a text file: the phone's own voice reads it from the start. See ReadAloud. */
+    private var readAloud: ReadAloud? = null
+
+    private fun setUpReadAloud(toolbar: MaterialToolbar, kind: FileKind, uri: Uri) {
+        val item = toolbar.menu.findItem(R.id.action_read_aloud) ?: return
+        if (kind != FileKind.TEXT && kind != FileKind.PDF) {
+            item.isVisible = false
+            return
+        }
+        // A PDF shows the item once its page is up and can send its text, see openSearchChannel
+        item.isVisible = kind == FileKind.TEXT
+        item.title = getString(R.string.read_aloud)
+        item.setOnMenuItemClickListener {
+            if (readAloud?.isPlaying == true) {
+                readAloud?.stop()
+            } else if (kind == FileKind.PDF) {
+                // The page sends its text back over the channel; finishPdfSpeech starts the reading
+                pdfSpeech = StringBuilder()
+                tellPage(PortCommand.readText())
+            } else {
+                offMain({ text: String? ->
+                    if (text.isNullOrBlank()) {
+                        Toast.makeText(this, R.string.nothing_to_read, Toast.LENGTH_SHORT).show()
+                    } else {
+                        val reader = readAloud ?: ReadAloud(this) {
+                            toolbar.menu.findItem(R.id.action_read_aloud)?.title = getString(R.string.read_aloud)
+                        }.also { readAloud = it }
+                        reader.start(text)
+                        toolbar.menu.findItem(R.id.action_read_aloud)?.title = getString(R.string.stop_reading)
+                    }
+                }) { app -> readableText(app, uri) }
+            }
+            true
+        }
+    }
+
+    /** The text of a PDF as its page has sent it so far, while it is being sent. Null when none is asked for. */
+    private var pdfSpeech: StringBuilder? = null
+
+    /** Once the PDF has sent every page's text, starts reading it, or says there is none. */
+    private fun finishPdfSpeech() {
+        val text = pdfSpeech?.toString()
+        pdfSpeech = null
+        if (text.isNullOrBlank()) {
+            Toast.makeText(this, R.string.nothing_to_read, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val reader = readAloud ?: ReadAloud(this) {
+            findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_read_aloud)?.title =
+                getString(R.string.read_aloud)
+        }.also { readAloud = it }
+        reader.start(text)
+        findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_read_aloud)?.title =
+            getString(R.string.stop_reading)
+    }
+
+    /** The text of a file, decoded as UTF-8 or else as the Korean code page, at most 2 MB of it. */
+    private fun readableText(app: Context, uri: Uri): String? {
+        val bytes = app.contentResolver.openInputStream(uri)?.use { it.readNBytes(2 * 1024 * 1024) }
+            ?: return null
+        return try {
+            Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString()
+        } catch (_: CharacterCodingException) {
+            String(bytes, runCatching { Charset.forName("x-windows-949") }.getOrElse { Charset.forName("EUC-KR") })
+        }
+    }
+
     override fun onStop() {
         playerScreen?.stopped()
+        readAloud?.stop()
         savePosition()
         super.onStop()
     }
@@ -2829,6 +2910,8 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        readAloud?.release()
+        readAloud = null
         playerScreen?.release()
         doubleTapZoom?.cancel()
         webView?.destroy()

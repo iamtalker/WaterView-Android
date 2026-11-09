@@ -2368,10 +2368,42 @@ window.addEventListener("message", function (e) {
 
 /* One letter of command, then the rest is payload. A query is arbitrary text and
    deliberately never parsed as anything but text. */
+/* The text of the whole document, page by page, for reading aloud. Each page goes out as one
+   "speech" message, in order, and "speechdone" follows the last. A page with no text, or one
+   that won't read, sends an empty piece rather than stopping the rest. */
+function sendPdfText() {
+  if (!doc || !searchPort) return;
+  var n = 1;
+  (function next() {
+    if (n > doc.numPages) {
+      searchPort.postMessage("speechdone");
+      return;
+    }
+    doc.getPage(n).then(function (page) {
+      return page.getTextContent();
+    }).then(function (content) {
+      var text = content.items.map(function (item) {
+        return item.str + (item.hasEOL ? "\n" : "");
+      }).join("");
+      searchPort.postMessage("speech " + text);
+      n++;
+      next();
+    }).catch(function () {
+      searchPort.postMessage("speech ");
+      n++;
+      next();
+    });
+  })();
+}
+
 function onCommand(msg) {
   /* The title bar's height and whereabouts, which app.js keeps for every page */
   if (vwBarSaid(msg)) return;
   var verb = msg.charAt(0);
+  if (verb === "r") {
+    sendPdfText();
+    return;
+  }
   if (verb === "q") {
     var q = msg.slice(1);
     if (q === finding.query) return;

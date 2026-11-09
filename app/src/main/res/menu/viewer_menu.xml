@@ -58,6 +58,13 @@
         android:title="@string/next_file"
         android:visible="false"
         app:showAsAction="never" />
+    <!-- Reads a text file, or a PDF with text in it, aloud with the phone's own voice. Hidden for other
+         formats and for a PDF that has no text to read. -->
+    <item
+        android:id="@+id/action_read_aloud"
+        android:title="@string/read_aloud"
+        android:visible="false"
+        app:showAsAction="never" />
     <!-- Turns a document's pages over for reading in the dark: a PDF's since issue #19, a
          Word document's since #47. Hidden for every other format. -->
     <item

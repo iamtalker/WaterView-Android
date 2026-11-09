@@ -142,6 +142,9 @@
          rather than what it does, because "invert" describes the arithmetic and this is
          the only place in the app a reader meets it. -->
     <string name="night_mode">야간 모드</string>
+    <string name="read_aloud">읽어주기</string>
+    <string name="stop_reading">읽기 멈추기</string>
+    <string name="nothing_to_read">읽을 글자가 없습니다.</string>
     <!-- Under the name of a file of no known format that reads as text, and so opened as
          text with no card to say why. What was done comes first: at a font size above 1.19 a
          360dp bar has no room for the whole line, and it is the end that gets cut. Issue #51. -->

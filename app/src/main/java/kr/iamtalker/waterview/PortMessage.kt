@@ -63,6 +63,9 @@ internal object PortCommand {
     /** Go to a character of a text file, counted from its start. See [PortMessage.Offset]. */
     fun goToOffset(at: Long) = "j$at"
 
+    /** Send the text of a PDF, page by page, for reading aloud. See [PortMessage.Speech]. */
+    fun readText() = "r"
+
     /** Scroll a text file to a thousandth of the way down it. See [PortMessage.Scroll]. */
     fun scrollTo(thousandths: Int) = "s$thousandths"
 }
@@ -86,6 +89,12 @@ internal sealed interface PortMessage {
 
     /** The PDF asked for a password, which Android's printing has no way to give it. */
     data object Locked : PortMessage
+
+    /** A page of a PDF's text, for reading aloud. Sent once for each page, in order. */
+    data class Speech(val text: String) : PortMessage
+
+    /** The PDF has sent the text of its last page. */
+    data object SpeechDone : PortMessage
 
     /**
      * Where in a book the top of the screen is: the chapter by its number in the reading
@@ -144,9 +153,12 @@ internal fun parsePortMessage(data: String?): PortMessage? {
         "reflow 1" -> return PortMessage.Reflows(true)
         "reflow 0" -> return PortMessage.Reflows(false)
         "simple" -> return PortMessage.SimpleView
+        "speechdone" -> return PortMessage.SpeechDone
         "shrunk 1" -> return PortMessage.Shrunk(true)
         "shrunk 0" -> return PortMessage.Shrunk(false)
     }
+    // The rest of the message is the text as it is, never split or parsed
+    if (data != null && data.startsWith("speech ")) return PortMessage.Speech(data.substring(7))
     val said = data?.split(" ") ?: return null
     // "tx <n> <words>", where the words are the text from there on and may hold spaces of their own
     if (said[0] == "sc" && said.size == 2) {
