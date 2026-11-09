@@ -6,6 +6,7 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.text.Spannable
+import android.text.StaticLayout
 import android.text.SpannableString
 import android.text.style.BackgroundColorSpan
 import android.view.Gravity
@@ -58,6 +59,9 @@ class TextReaderActivity : AppCompatActivity() {
     private var readAloud: ReadAloud? = null
     private var seeking = false
     private var textSizeSp = 18f
+    /** The average height of a row on the screen, in pixels, for the width and text size [rowPxFor] names. */
+    private var rowPx = 0f
+    private var rowPxFor: Pair<Int, Float>? = null
     private var ink = Color.BLACK
     private var ground = Color.WHITE
 
@@ -123,7 +127,7 @@ class TextReaderActivity : AppCompatActivity() {
         }
         seek = SeekBar(this).apply { max = 1000 }
         percent = TextView(this).apply {
-            setOnClickListener { askForLine() }
+            setOnClickListener { askForPage() }
             setTextColor(ink)
             textSize = 13f
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
@@ -166,7 +170,10 @@ class TextReaderActivity : AppCompatActivity() {
         root.addView(bottom, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         bottomBar = bottom
 
-        list.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (!seeking) showPosition() }
+        list.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            ensureRowHeight()
+            if (!seeking) showPosition()
+        }
         list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 if (!seeking) showPosition()
@@ -204,8 +211,71 @@ class TextReaderActivity : AppCompatActivity() {
                 adapter.notifyDataSetChanged()
                 val left = key?.let { Marks.leftAt(this, it) }
                 if (left != null && left in 0 until opened.length) jumpToByte(left) else showPosition()
+                ensureRowHeight()
             }
         }
+    }
+
+    /**
+     * Measures the average height of a row for the width and text size on the screen, from a sample of
+     * rows spread through the text. The page count is worked out from it, so no row is laid out at all
+     * just to count pages: the count is an estimate, which is what keeps opening a long text quick.
+     */
+    private fun ensureRowHeight() {
+        val idx = index ?: return
+        if (idx.rowCount == 0 || list.width <= 0) return
+        val width = list.width - list.paddingLeft - list.paddingRight
+        val size = textSizeSp
+        val key = Pair(width, size)
+        if (rowPxFor == key) return
+        val sample = TextView(this).apply {
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            textSize = size
+        }
+        val paint = sample.paint
+        val includePad = sample.includeFontPadding
+        worker.execute {
+            val samples = minOf(300, idx.rowCount)
+            var total = 0f
+            for (s in 0 until samples) {
+                val row = (s.toLong() * idx.rowCount / samples).toInt()
+                val line = idx.readRow(row)
+                total += StaticLayout.Builder.obtain(line, 0, line.length, paint, maxOf(1, width))
+                    .setIncludePad(includePad).build().height
+            }
+            val avg = maxOf(1f, total / samples)
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                rowPx = avg
+                rowPxFor = key
+                Diag.log(this, "text: row height px=${"%.1f".format(avg)} width=$width size=$size pages=${totalPages()}")
+                showPosition()
+            }
+        }
+    }
+
+    private fun pageHeight(): Float =
+        (list.height - list.paddingTop - list.paddingBottom).toFloat().coerceAtLeast(1f)
+
+    /** How many pages the text makes, estimated from the average row height. */
+    private fun totalPages(): Int {
+        val idx = index ?: return 0
+        if (rowPx <= 0f || idx.rowCount == 0) return 0
+        return kotlin.math.ceil(idx.rowCount * rowPx / pageHeight()).toInt().coerceAtLeast(1)
+    }
+
+    /** The page on the screen, estimated from the row at the top. */
+    private fun currentPage(): Int {
+        val total = totalPages()
+        if (total == 0) return 0
+        val at = kotlin.math.floor(topRow() * rowPx / pageHeight()).toInt() + 1
+        return at.coerceIn(1, total)
+    }
+
+    /** The first row of page [page]. */
+    private fun rowForPage(page: Int): Int {
+        val idx = index ?: return 0
+        return ((page - 1) * pageHeight() / rowPx).toInt().coerceIn(0, maxOf(0, idx.rowCount - 1))
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -236,7 +306,7 @@ class TextReaderActivity : AppCompatActivity() {
         }
         val top = topRow().coerceAtMost(idx.rowCount - 1)
         if (!seeking) seek.progress = (idx.rowStart(top) * 1000 / maxOf(1L, idx.length)).toInt()
-        percent.text = "${top + 1} / ${idx.rowCount}"
+        percent.text = if (rowPx <= 0f) "… / …" else "${currentPage()} / ${totalPages()}"
     }
 
     /** Scrolls so the row holding byte offset [at] is at the top. */
@@ -445,28 +515,28 @@ class TextReaderActivity : AppCompatActivity() {
             .show()
     }
 
-    /** Asks for a line number and goes to it. The count is of lines, which is exact for any size of file. */
-    private fun askForLine() {
+    /** Asks for a page number and goes to its first row. The count is an estimate from the row height. */
+    private fun askForPage() {
         val idx = index ?: return
-        if (idx.rowCount == 0) return
-        val total = idx.rowCount
+        if (rowPx <= 0f || idx.rowCount == 0) return
+        val total = totalPages()
         val entry = EditText(this).apply {
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
-            setText((topRow() + 1).toString())
+            setText(currentPage().toString())
             setSelection(text.length)
         }
         MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.go_to_line)
-            .setMessage(getString(R.string.line_range, total))
+            .setTitle(R.string.go_to_page)
+            .setMessage(getString(R.string.page_range, total))
             .setView(entry)
             .setPositiveButton(R.string.go) { _, _ ->
                 val n = entry.text.toString().toIntOrNull()
                 if (n != null && n in 1..total) {
-                    (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(n - 1, 0)
+                    (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(rowForPage(n), 0)
                     list.post { showPosition() }
                     showPosition()
                 } else {
-                    Toast.makeText(this, getString(R.string.line_range, total), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.page_range, total), Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton(android.R.string.cancel, null)
@@ -484,6 +554,7 @@ class TextReaderActivity : AppCompatActivity() {
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit().putFloat(KEY_SIZE, textSizeSp).apply()
                 adapter.notifyDataSetChanged()
                 jumpToByte(at)
+                ensureRowHeight()
             }
             .show()
     }
@@ -517,6 +588,7 @@ class TextReaderActivity : AppCompatActivity() {
             textSizeSp = size
             adapter.notifyDataSetChanged()
         }
+        ensureRowHeight()
     }
 
     override fun onStop() {
