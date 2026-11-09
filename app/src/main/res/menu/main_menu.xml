@@ -1,18 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <!-- Folder actions: visible only when browsing inside a folder -->
-    <item
-        android:id="@+id/action_sort"
-        android:title="@string/sort_by"
-        android:visible="false"
-        app:showAsAction="never" />
-    <item
-        android:id="@+id/action_filter"
-        android:title="@string/filter"
-        android:visible="false"
-        app:showAsAction="never" />
-
     <item
         android:id="@+id/action_settings"
         android:title="@string/reading_settings"

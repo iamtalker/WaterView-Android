@@ -8,14 +8,12 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.provider.DocumentsContract
 import android.text.format.DateUtils
 import android.text.format.Formatter
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
@@ -50,10 +48,6 @@ class MainActivity : AppCompatActivity() {
      */
     private data class Screen(val rows: List<Row>, val welcome: Boolean = false)
 
-    private data class Crumb(val treeUri: Uri, val docId: String, val label: String)
-
-    private val stack = ArrayDeque<Crumb>()
-    private val activeFilters = mutableSetOf<String>()
     private val adapter = RowAdapter()
     private lateinit var toolbar: MaterialToolbar
     private lateinit var lockup: View
@@ -88,8 +82,7 @@ class MainActivity : AppCompatActivity() {
      * suppresses the listing, which makes this the one item on the pre-launch list that
      * could quietly cost reach.
      *
-     * Single threaded on purpose: one folder is being looked at at a time, and it keeps
-     * treeLabels below confined to one thread without a lock.
+     * Single threaded on purpose: the rows are read one list at a time, in the order asked for.
      */
     @androidx.annotation.VisibleForTesting
     internal var loader: java.util.concurrent.ExecutorService =
@@ -106,22 +99,6 @@ class MainActivity : AppCompatActivity() {
 
     /** Number of recent files currently shown; increased by the Recent files' Show more row. */
     private var recentLimit = RECENTS_PAGE_SIZE
-
-    /**
-     * Display names for granted trees, which cost a query each and never change while
-     * the grant lasts. Read and written only on [loader], so it needs no synchronising.
-     */
-    private val treeLabels = mutableMapOf<String, String>()
-
-    private val backCallback = object : OnBackPressedCallback(false) {
-        override fun handleOnBackPressed() {
-            stack.removeLast()
-            if (stack.isEmpty()) {
-                activeFilters.clear()
-            }
-            render()
-        }
-    }
 
     private val openDocument =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -145,15 +122,9 @@ class MainActivity : AppCompatActivity() {
 
         toolbar = findViewById(R.id.toolbar)
         lockup = findViewById(R.id.lockup)
-        toolbar.setNavigationOnClickListener { backCallback.handleOnBackPressed() }
-        // render() rewrites the title and navigation icon on every resume and on
-        // every folder change, but never touches the menu, so inflating once here
-        // survives all of it.
         toolbar.inflateMenu(R.menu.main_menu)
         toolbar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
-                R.id.action_sort -> { showSortDialog(); true }
-                R.id.action_filter -> { showFilterDialog(); true }
                 R.id.action_settings -> { startActivity(Intent(this, SettingsActivity::class.java)); true }
                 R.id.action_update -> { checkForUpdates(); true }
                 R.id.action_about -> { showAbout(); true }
@@ -196,9 +167,6 @@ class MainActivity : AppCompatActivity() {
         fab.setOnClickListener(openFile)
         findViewById<View>(R.id.openFileButton).setOnClickListener(openFile)
 
-        restoreStack(savedInstanceState)
-        restoreFilters(savedInstanceState)
-        onBackPressedDispatcher.addCallback(this, backCallback)
     }
 
     /** The permission to show update notices, asked once, the first time the app opens (Android 13 and later). */
@@ -245,49 +213,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 .show()
-        }
-    }
-
-    /**
-     * Keeps the reader where they were browsing across a configuration change.
-     *
-     * This activity is recreated on a rotation, a font size change, a theme change and a
-     * multi-window resize, and [stack] is an ordinary field, so all of them used to drop
-     * whoever was three folders deep straight back to the root with no way to tell why.
-     * A phone is rarely rotated mid-browse and a tablet is rotated constantly, which is
-     * where this was found.
-     *
-     * Three parallel lists rather than a Parcelable Crumb: a crumb is a URI and two
-     * strings, and this needs no new type, no @Parcelize plugin, and none of the
-     * getParcelableArrayList deprecation dance.
-     *
-     * The rows are not saved with it. They come from a provider that may have changed
-     * while the activity was gone, so onResume re-reads the folder rather than restoring
-     * a stale listing of it.
-     */
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        outState.putStringArrayList(STATE_TREE_URIS, ArrayList(stack.map { it.treeUri.toString() }))
-        outState.putStringArrayList(STATE_DOC_IDS, ArrayList(stack.map { it.docId }))
-        outState.putStringArrayList(STATE_LABELS, ArrayList(stack.map { it.label }))
-        outState.putStringArrayList(STATE_ACTIVE_FILTERS, ArrayList(activeFilters))
-    }
-
-    private fun restoreFilters(state: Bundle?) {
-        val saved = state?.getStringArrayList(STATE_ACTIVE_FILTERS) ?: return
-        activeFilters.clear()
-        activeFilters.addAll(saved)
-    }
-
-    private fun restoreStack(state: Bundle?) {
-        val uris = state?.getStringArrayList(STATE_TREE_URIS) ?: return
-        val docIds = state.getStringArrayList(STATE_DOC_IDS) ?: return
-        val labels = state.getStringArrayList(STATE_LABELS) ?: return
-        // Defensive: a truncated Bundle would otherwise index out of bounds, and landing
-        // at the root is the same place a failure here would land anyway.
-        if (uris.size != docIds.size || uris.size != labels.size) return
-        uris.indices.forEach { i ->
-            stack.addLast(Crumb(uris[i].toUri(), docIds[i], labels[i]))
         }
     }
 
@@ -442,67 +367,35 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Redraws the screen for wherever the reader is now.
-     *
-     * The toolbar changes at once and the list follows, because the title is known here
-     * and the rows are not: they come from a provider that may be slow. Nothing is
-     * cleared in the meantime, so returning from a document leaves the old list on
-     * screen until the new one is ready rather than blinking through empty.
+     * Redraws the home screen: its recent files, the rows that can be removed, and the welcome
+     * block on a first run. The rows are read off the main thread, and only the last request is drawn.
      */
     private fun render() {
-        val here = stack.lastOrNull()
-        backCallback.isEnabled = here != null
-        // At the root the wordmark is the title, centred; inside a folder the title is the
-        // folder's name, where Android puts it, beside the back arrow. A mark is an identity
-        // and a folder name is a location, so these are two kinds of content sharing a slot
-        // rather than one element that moves.
-        toolbar.title = here?.label.orEmpty()
-        lockup.visibility = if (here == null) View.VISIBLE else View.GONE
-        toolbar.navigationIcon =
-            if (here == null) null
-            else androidx.appcompat.content.res.AppCompatResources.getDrawable(this, R.drawable.ic_back)
-        toolbar.navigationContentDescription = getString(R.string.back)
-
-        val inFolder = here != null
-        toolbar.menu.findItem(R.id.action_sort)?.isVisible = inFolder
-        toolbar.menu.findItem(R.id.action_filter)?.isVisible = inFolder
-        toolbar.menu.findItem(R.id.action_about)?.isVisible = !inFolder
-
-        val filterSummary = if (inFolder && activeFilters.isNotEmpty()) {
-            SUPPORTED_FILTER_TYPES
-                .map { it.badge }
-                .filter { it in activeFilters }
-                .joinToString(", ")
-        } else {
-            null
-        }
-        toolbar.subtitle = if (filterSummary != null) getString(R.string.filter_subtitle, filterSummary) else null
+        toolbar.title = ""
+        lockup.visibility = View.VISIBLE
+        toolbar.navigationIcon = null
+        toolbar.subtitle = null
+        toolbar.menu.findItem(R.id.action_about)?.isVisible = true
 
         val token = ++renderToken
-        // Delayed rather than shown at once. Most folders come back in a few
-        // milliseconds, and a bar that appears and vanishes inside one frame reads as a
-        // flicker rather than as progress.
+        // Delayed rather than shown at once. Most lists come back in a few milliseconds, and a
+        // bar that appears and vanishes inside one frame reads as a flicker rather than as progress.
         val announce = Runnable {
             if (token == renderToken && !isDestroyed) progress.visibility = View.VISIBLE
         }
         main.postDelayed(announce, RENDER_PROGRESS_DELAY_MS)
         // Read here, on the main thread, which is the only one that changes it
         val hidden = pending?.uri
-        val filters = activeFilters.toSet()
 
         loader.execute {
-            // Checked here as well as after, because loader is a single thread: without
-            // this, tapping into a folder and straight back out makes the second read
-            // wait for the whole of the first, which on the slow provider this exists
-            // for is the wait it was meant to remove.
+            // Checked here as well as after, because loader is a single thread: a render that has
+            // been overtaken does not need its rows read at all.
             if (token != renderToken) return@execute
-            val screen = if (here == null) homeRows(hidden) else folderRows(here, filters)
+            val screen = homeRows(hidden)
             main.post {
                 main.removeCallbacks(announce)
                 if (token != renderToken || isDestroyed) return@post
                 progress.visibility = View.GONE
-                // Inside the token guard, so a slow load that finishes after the reader has
-                // moved on cannot put the welcome block back over a folder they are in.
                 welcome.visibility = if (screen.welcome) View.VISIBLE else View.GONE
                 list.visibility = if (screen.welcome) View.GONE else View.VISIBLE
                 if (screen.welcome) fab.hide() else fab.show()
@@ -646,79 +539,6 @@ class MainActivity : AppCompatActivity() {
         return Screen(rows)
     }
 
-    private fun folderRows(crumb: Crumb, filters: Set<String>): Screen {
-        val children = childrenOf(contentResolver, crumb.treeUri, crumb.docId).orEmpty()
-
-        val sortOrder = Settings.sortOrder(this)
-        val (dirs, files) = orderChildren(children, sortOrder)
-
-        val filteredFiles = if (filters.isEmpty()) {
-            files
-        } else {
-            files.filter { f ->
-                val (badge, _) = badgeFor(f.name, f.mime)
-                badge in filters
-            }
-        }
-
-        val rows = mutableListOf<Row>()
-        dirs.forEach { d ->
-            rows += Row.Item("DIR", DIR_COLOR, d.name, null, onClick = {
-                stack.addLast(Crumb(crumb.treeUri, d.docId, d.name))
-                render()
-            })
-        }
-        // What the viewer may move to from any file of this folder, in the order it is listed
-        val siblings = filteredFiles.map { DocumentsContract.buildDocumentUriUsingTree(crumb.treeUri, it.docId) }
-        filteredFiles.forEach { f ->
-            val (badge, color) = badgeFor(f.name, f.mime)
-            val ext = f.name.substringAfterLast('.', "").lowercase()
-            val fileUri = DocumentsContract.buildDocumentUriUsingTree(crumb.treeUri, f.docId)
-            val subtitle = listOfNotNull(
-                Formatter.formatShortFileSize(this, f.size).takeIf { f.size > 0 },
-                DateUtils.getRelativeTimeSpanString(f.modified).toString()
-                    .takeIf { f.modified > 0 }
-            ).joinToString(" · ").ifEmpty { null }
-            rows += Row.Item(
-                badge, color, f.name, subtitle,
-                onClick = { FolderFiles.uris = siblings; openInViewer(fileUri) },
-                thumbUri = fileUri.takeIf {
-                    Thumbs.supported(FileKind.detect(ext, f.mime), ext)
-                },
-                thumbExt = ext
-            )
-        }
-        if (rows.isEmpty()) {
-            val emptyMsg = if (filters.isNotEmpty()) {
-                getString(R.string.filter_empty)
-            } else {
-                getString(R.string.empty_folder)
-            }
-            rows += Row.Hint(emptyMsg)
-        }
-        return Screen(rows)
-    }
-
-    private fun isTreeUri(uri: Uri): Boolean =
-        runCatching { DocumentsContract.getTreeDocumentId(uri) }.isSuccess &&
-            uri.pathSegments.firstOrNull() == "tree"
-
-    /** Cached: the name of a granted tree costs a query and does not change. */
-    private fun treeLabel(uri: Uri): String =
-        treeLabels.getOrPut(uri.toString()) { readTreeLabel(uri) }
-
-    private fun readTreeLabel(uri: Uri): String {
-        val id = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: return "Folder"
-        val name = runCatching {
-            contentResolver.query(
-                DocumentsContract.buildDocumentUriUsingTree(uri, id),
-                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
-                null, null, null
-            )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
-        }.getOrNull()
-        return name ?: id.substringAfterLast(':').ifEmpty { id }
-    }
-
     /**
      * Draws the nine tiles of the welcome grid: eight of the pairs [badgeFor] returns, and
      * ETC for the kinds that have no tile.
@@ -743,69 +563,6 @@ class MainActivity : AppCompatActivity() {
         ViewCompat.setScreenReaderFocusable(grid, true)
     }
 
-    private fun showSortDialog() {
-        val orders = Settings.SortOrder.values()
-        val current = Settings.sortOrder(this)
-        val items = orders.map { getString(it.labelRes) }.toTypedArray()
-        val checkedItem = orders.indexOf(current).coerceAtLeast(0)
-
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.sort_by)
-            .setSingleChoiceItems(items, checkedItem) { dialog, which ->
-                Settings.setSortOrder(this, orders[which])
-                render()
-                dialog.dismiss()
-            }
-            .show()
-    }
-
-    private fun showFilterDialog() {
-        val view = layoutInflater.inflate(R.layout.dialog_filter, null)
-        val container = view.findViewById<ViewGroup>(R.id.filterItemsContainer)
-        val resetBtn = view.findViewById<View>(R.id.resetFilterButton)
-
-        val tempSelected = activeFilters.toMutableSet()
-        val checkBoxes = mutableListOf<MaterialCheckBox>()
-
-        SUPPORTED_FILTER_TYPES.forEach { item ->
-            val row = layoutInflater.inflate(R.layout.dialog_filter_item, container, false)
-            val badge = row.findViewById<TextView>(R.id.filterBadge)
-            val title = row.findViewById<TextView>(R.id.filterTitle)
-            val checkbox = row.findViewById<MaterialCheckBox>(R.id.filterCheckbox)
-
-            badge.text = item.badge
-            badge.background.mutate().setTint(item.color)
-            title.setText(item.labelRes)
-            checkbox.isChecked = item.badge in tempSelected
-            checkBoxes += checkbox
-
-            row.setOnClickListener {
-                checkbox.isChecked = !checkbox.isChecked
-                if (checkbox.isChecked) {
-                    tempSelected += item.badge
-                } else {
-                    tempSelected -= item.badge
-                }
-            }
-
-            container.addView(row)
-        }
-
-        resetBtn.setOnClickListener {
-            tempSelected.clear()
-            checkBoxes.forEach { it.isChecked = false }
-        }
-
-        MaterialAlertDialogBuilder(this)
-            .setView(view)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                activeFilters.clear()
-                activeFilters.addAll(tempSelected)
-                render()
-            }
-            .show()
-    }
-
     override fun onDestroy() {
         // Anything already queued still runs to completion and the thread ends with it,
         // rather than outliving the activity it was drawing.
@@ -823,10 +580,5 @@ class MainActivity : AppCompatActivity() {
         /** How long a folder may take to read before the screen says anything about it. */
         const val RENDER_PROGRESS_DELAY_MS = 150L
 
-        /** Where the reader had browsed to, kept across a configuration change. */
-        const val STATE_TREE_URIS = "stack.treeUris"
-        const val STATE_DOC_IDS = "stack.docIds"
-        const val STATE_LABELS = "stack.labels"
-        const val STATE_ACTIVE_FILTERS = "active_filters"
     }
 }
