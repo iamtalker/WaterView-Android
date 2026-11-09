@@ -231,6 +231,7 @@ function distance(slot) {
 function want(slot) {
   if (slot.state !== "blank") return;
   slot.state = "queued";
+  slot.tWant = performance.now();
   queue.push(slot);
 }
 
@@ -349,6 +350,16 @@ function blank(slot) {
     slot.page.cleanup();
     slot.page = null;
   }
+}
+
+/*
+ * Tells the app how long a page took, for its diagnostic log: the page, how long it waited
+ * to be started, how long pdf.js took to load it, and how long it took to draw in all, in
+ * milliseconds. Only the slow ones, so the log of a long read is not all fast pages.
+ */
+function reportTiming(n, waited, loaded, total) {
+  if (!searchPort || total < 200) return;
+  searchPort.postMessage("tm " + n + " " + Math.round(waited) + " " + Math.round(loaded) + " " + Math.round(total));
 }
 
 function pump() {
@@ -680,6 +691,10 @@ function onScreen(slot) {
 function draw(slot) {
   slot.state = "drawing";
   inFlight++;
+  /* For the diagnostic log: when this page was asked for, and when drawing began */
+  var tStart = performance.now();
+  var tWaited = slot.tWant ? tStart - slot.tWant : 0;
+  var tLoaded = 0;
   /* The mode this bitmap is being drawn in, which is not necessarily the mode by the
      time it lands. Read once here and compared once at the end. */
   var mode = inverted;
@@ -688,6 +703,7 @@ function draw(slot) {
   var at = shrink;
   return doc.getPage(slot.n).then(function (page) {
     slot.page = page;
+    tLoaded = performance.now() - tStart;
 
     var unscaled = page.getViewport({ scale: 1 });
     /* Correct the placeholder to this page's own shape. Page 1's shape was a
@@ -783,6 +799,7 @@ function draw(slot) {
     });
   }).then(function () {
     slot.state = "drawn";
+    reportTiming(slot.n, tWaited, tLoaded, performance.now() - tStart);
     /*
      * Night mode moved while this was being drawn, so the picture that just arrived is
      * of the wrong one. Ask for it again, keeping this one up meanwhile; the mode is read

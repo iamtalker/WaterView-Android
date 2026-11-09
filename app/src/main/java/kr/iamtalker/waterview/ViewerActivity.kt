@@ -1842,6 +1842,12 @@ open class ViewerActivity : AppCompatActivity() {
                         }
                         is PortMessage.SearchCount ->
                             onSearchCount?.invoke(said.at, said.total, said.done)
+                        is PortMessage.Timing -> if (kind == FileKind.PDF) {
+                            Diag.log(
+                                this@ViewerActivity,
+                                "pdf: page ${said.page} took ${said.total} ms (waited ${said.waited}, load ${said.load})"
+                            )
+                        }
                         PortMessage.Locked -> if (kind == FileKind.PDF) printLocked = true
                         is PortMessage.Place -> if (book) {
                             bookPlace = Positions.Place(said.chapter, said.past)

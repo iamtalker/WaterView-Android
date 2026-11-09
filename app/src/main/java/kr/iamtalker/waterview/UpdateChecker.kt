@@ -14,6 +14,7 @@ import java.net.URL
 
 object UpdateChecker {
     private const val REPOSITORY = "iamtalker/WaterView-Android"
+    const val RELEASES_URL = "https://github.com/$REPOSITORY/releases/latest"
     data class Release(val version: String, val downloadUrl: String?)
 
     suspend fun latest(): Release? = withContext(Dispatchers.IO) {

@@ -209,7 +209,18 @@ class MainActivity : AppCompatActivity() {
                     lifecycleScope.launch {
                         runCatching { UpdateChecker.downloadAndInstall(this@MainActivity, release) }
                             .onSuccess { Toast.makeText(this@MainActivity, R.string.update_opening, Toast.LENGTH_LONG).show() }
-                            .onFailure { Toast.makeText(this@MainActivity, getString(R.string.update_failed, it.message), Toast.LENGTH_LONG).show() }
+                            .onFailure {
+                                MaterialAlertDialogBuilder(this@MainActivity)
+                                    .setTitle(R.string.update_failed_title)
+                                    .setMessage(getString(R.string.update_failed, it.message))
+                                    .setNegativeButton(android.R.string.cancel, null)
+                                    .setPositiveButton(R.string.update_open_releases) { _, _ ->
+                                        runCatching {
+                                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.RELEASES_URL)))
+                                        }
+                                    }
+                                    .show()
+                            }
                     }
                 }
                 .show()
