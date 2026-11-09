@@ -58,6 +58,19 @@ internal class PhotoPager(
     private val splitRegions = HashMap<String, Rect>()
     private val pages = Pages()
 
+    /**
+     * The photos as the reader counts them, one to a file: a wide scan split in two halves is still one
+     * page of the book, so the number of pages is known at once and does not grow as wide ones are reached.
+     */
+    private var originals: List<ChildDoc> = listOf(first)
+    private val fileNumbers = HashMap<String, Int>().apply { put(first.docId, 0) }
+
+    private fun renumber(list: List<ChildDoc>) {
+        originals = list
+        fileNumbers.clear()
+        list.forEachIndexed { i, doc -> fileNumbers[doc.docId] = i }
+    }
+
     /** The page playing a moving picture, if one is. */
     private var playing: Page? = null
 
@@ -89,7 +102,25 @@ internal class PhotoPager(
         })
     }
 
+    /** The items the pager turns through: a wide photo split in two counts as two. */
     val count: Int get() = photos.size
+
+    /** The pages of the book as the reader counts them, a split photo being one. */
+    val fileCount: Int get() = originals.size
+
+    /** The names of the files, in order. */
+    val fileNames: List<String> get() = originals.map { it.name }
+
+    private fun fileOf(photo: ChildDoc) = fileNumbers[sourceOf(photo).docId] ?: 0
+
+    /** The number of the page on show, counted from nought in files: either half of a split photo is its file's. */
+    val currentFile: Int get() = fileOf(photos[firstIndex(view.currentItem)])
+
+    /** Goes to the first half of the file numbered [file], counted from nought, without an animation. */
+    fun goToFile(file: Int) {
+        val at = photos.indexOfFirst { fileOf(it) == file }
+        if (at >= 0 && at != view.currentItem) view.setCurrentItem(at, false)
+    }
 
     /** Whether the page on show is the last one in the list the pager holds. */
     val onLastPage: Boolean get() = view.currentItem >= (view.adapter?.itemCount ?: 0) - 1
@@ -127,52 +158,11 @@ internal class PhotoPager(
     /** The tiling view drawing the photo on screen, or null where it isn't drawn by one. */
     val stillShown: StillPhotoView? get() = pageAt(view.currentItem)?.still
 
-    /**
-     * Splits every wide photo whose size is in [sizes] (width, height) into its two halves at once, so the
-     * page count is right from the start and does not grow as wide pages are reached. The page on show
-     * stays on show.
-     */
-    fun presplit(sizes: Map<String, Pair<Int, Int>>) {
-        if (!splitWidePages || sizes.isEmpty()) return
-        val onShow = photos.getOrNull(firstIndex(view.currentItem))?.docId ?: return
-        var changed = false
-        val out = ArrayList<ChildDoc>(photos.size + 16)
-        for (photo in photos) {
-            val size = sizes[photo.docId]
-            if (size == null || photo.docId in splitRegions || photo.docId in splitSources ||
-                size.first <= size.second * WIDE_PAGE_RATIO
-            ) {
-                out += photo
-                continue
-            }
-            val width = size.first
-            val height = size.second
-            val middle = width / 2
-            val firstRect = if (rightToLeft) Rect(middle, 0, width, height) else Rect(0, 0, middle, height)
-            val secondRect = if (rightToLeft) Rect(0, 0, middle, height) else Rect(middle, 0, width, height)
-            val a = photo.copy(docId = "${photo.docId}#wvhalf-a")
-            val b = photo.copy(docId = "${photo.docId}#wvhalf-b")
-            splitSources[a.docId] = photo
-            splitSources[b.docId] = photo
-            splitRegions[a.docId] = firstRect
-            splitRegions[b.docId] = secondRect
-            out += a
-            out += b
-            changed = true
-        }
-        if (!changed) return
-        photos = out
-        pages.notifyDataSetChanged()
-        val at = photos.indexOfFirst { it.docId == onShow || it.docId == "$onShow#wvhalf-a" }
-        if (at >= 0) view.setCurrentItem(at / step, false)
-        // The count has changed even where the page on show has not, and no page change says so
-        announce(view.currentItem)
-    }
-
     /** Puts the folder's other photos either side of the one opened, which stays on screen. */
     fun fill(all: List<ChildDoc>, at: Int) {
         if (photos.size != 1 || all.size < 2 || all.getOrNull(at)?.docId != photos[0].docId) return
         photos = all
+        renumber(all)
         pages.notifyDataSetChanged()
         view.setCurrentItem(at / step, false)
         // Said again for the first photo, which no page change announces
@@ -189,6 +179,7 @@ internal class PhotoPager(
         val at = photos.indexOfFirst { it.docId == docId }
         if (at < 0 || photos.size < 2) return false
         photos = photos.filterIndexed { i, _ -> i != at }
+        renumber(originals.filter { it.docId != docId })
         pages.notifyDataSetChanged()
         // The photo after it takes its number, so no page change comes to name it, or to play
         // it if it moves
@@ -206,7 +197,7 @@ internal class PhotoPager(
 
     private fun announce(position: Int) {
         val photo = photos.getOrNull(firstIndex(position)) ?: return
-        host.shown(photo, uriOf(photo), position, pageCount)
+        host.shown(photo, uriOf(photo), fileOf(photo), fileCount)
     }
 
     private fun onScreen(photo: ChildDoc): Boolean {

@@ -306,7 +306,7 @@ open class ViewerActivity : AppCompatActivity() {
                     } else if (pageTotal > 1 && currentKind in setOf(FileKind.PDF, FileKind.PDF_SIMPLE)) {
                         tellPage(PortCommand.goToPage((seekBar.progress + 1).coerceIn(1, pageTotal)))
                     } else if (pageTotal > 1 && countsPhotos) {
-                        photoPager?.goTo(seekBar.progress.coerceIn(0, pageTotal - 1))
+                        photoPager?.goToFile(seekBar.progress.coerceIn(0, pageTotal - 1))
                     }
                 }
             }
@@ -1207,11 +1207,11 @@ open class ViewerActivity : AppCompatActivity() {
     @SuppressLint("SetTextI18n")
     /** A photo or a comic page: the number of the page to go to, asked for in the same way. */
     private fun askForPhoto(pager: PhotoPager) {
-        val total = pager.count
+        val total = pager.fileCount
         if (total < 2) return
         val entry = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
-            setText((pager.currentIndex + 1).toString())
+            setText((pager.currentFile + 1).toString())
             setSelection(text.length)
         }
         MaterialAlertDialogBuilder(this)
@@ -1220,7 +1220,7 @@ open class ViewerActivity : AppCompatActivity() {
             .setView(entry)
             .setPositiveButton(R.string.go) { _, _ ->
                 val n = entry.text.toString().toIntOrNull()
-                if (n != null && n in 1..total) pager.goTo(n - 1)
+                if (n != null && n in 1..total) pager.goToFile(n - 1)
                 else Toast.makeText(this, getString(R.string.page_range, total), Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton(android.R.string.cancel, null)
@@ -2154,18 +2154,23 @@ open class ViewerActivity : AppCompatActivity() {
         }
         // A photo handed over by the Downloads or media provider has an id that says nothing of its
         // folder, so it is looked for by name and size in the folders already granted
+        // Not for the storage provider, whose ids do say where a file is: a same-named file in another
+        // granted folder would be taken for it
+        val pathless = uri.authority != "com.android.externalstorage.documents"
         val size = sizeOf(uri)
-        contentResolver.persistedUriPermissions
-            .filter { it.isReadPermission && DocumentsContract.isTreeUri(it.uri) }
-            .firstNotNullOfOrNull { grant -> findByNameIn(grant.uri, name, size)?.let { grant.uri to it } }
-            ?.let { (tree, doc) ->
-                openFromFolder(tree, doc)
-                return
-            }
+        if (pathless) {
+            contentResolver.persistedUriPermissions
+                .filter { it.isReadPermission && DocumentsContract.isTreeUri(it.uri) }
+                .firstNotNullOfOrNull { grant -> findByNameIn(grant.uri, name, size)?.let { grant.uri to it } }
+                ?.let { (tree, doc) ->
+                    openFromFolder(tree, doc)
+                    return
+                }
+        }
         // Otherwise the picker opens on the photo's own folder, and one tap grants it
         onFolderPicked = { tree ->
             val held = tree?.takeIf { it.isFolderOf(photoDoc) }
-            val inside = if (held == null && tree != null) findByNameIn(tree, name, size) else null
+            val inside = if (pathless && held == null && tree != null) findByNameIn(tree, name, size) else null
             if (held != null || (tree != null && inside != null)) {
                 val granted = (held ?: tree)!!
                 runCatching {
@@ -2236,7 +2241,8 @@ open class ViewerActivity : AppCompatActivity() {
             ChildDoc(uri.toString(), name, contentResolver.getType(uri).orEmpty(), 0, 0)
         }
         var at = pages.indexOf(opened).takeIf { it >= 0 } ?: 0
-        // A comic opened from its first page goes on from the page it was left at
+        // A comic opened from its first page goes on from the page it was left at. Pages are counted in
+        // files, so a wide scan split in two halves is still one page, and the number is known at once
         if (at == 0 && pages.size > 1) {
             val left = Positions.page(this, "comic:${pages.first()}") - 1
             if (left in 1 until pages.size) at = left
@@ -2254,25 +2260,6 @@ open class ViewerActivity : AppCompatActivity() {
         findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_delete).isVisible = false
         container.addView(pager.view, matchParent())
         pager.fill(docs, at)
-        // Wide pages are split now, from their sizes, so the number of pages is right from the start
-        if (Settings.splitWidePages(this)) {
-            offMain({ sizes: Map<String, Pair<Int, Int>> ->
-                if (photoPager === pager) {
-                    pager.presplit(sizes)
-                    Diag.log(this, "comic: wide pages split, ${pager.count} pages")
-                }
-            }) { app ->
-                docs.mapNotNull { doc ->
-                    runCatching {
-                        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        app.contentResolver.openInputStream(Uri.parse(doc.docId))?.use {
-                            android.graphics.BitmapFactory.decodeStream(it, null, bounds)
-                        }
-                        if (bounds.outWidth > 0 && bounds.outHeight > 0) doc.docId to (bounds.outWidth to bounds.outHeight) else null
-                    }.getOrNull()
-                }.toMap()
-            }
-        }
     }
 
     private val photoHost = object : PhotoPager.Host {
@@ -2977,6 +2964,11 @@ open class ViewerActivity : AppCompatActivity() {
     /** Opens the file after this one in the folder it was opened from. False when there is none. */
     private fun openNextInFolder(): Boolean {
         val current = intent?.data ?: return false
+        // A comic made of the pictures in a folder goes on to the next folder, the volume after it, rather
+        // than to the next picture in the same folder, which is the volume's own next page
+        if (photoPager != null && DocumentsContract.isTreeUri(current) && ArchiveProvider.parse(current) == null) {
+            return openNextVolume()
+        }
         // A page inside a zip goes on to the next zip in the folder, the zip being the document in the folder
         val archive = ArchiveProvider.parse(current)?.archive
         val source = archive ?: current
@@ -2996,6 +2988,65 @@ open class ViewerActivity : AppCompatActivity() {
             Intent()
                 .setClassName(this, ViewerActivity.INTERNAL_VIEWER)
                 .setData(next)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        )
+        finish()
+        return true
+    }
+
+    /**
+     * From the last page of a folder of pictures, opens the first picture of the next folder beside it
+     * (2권 after 1권, in the order numbers read in). The folder above has to be granted for the folders
+     * beside this one to be reached, so it is asked for once. False when there is no next folder.
+     */
+    private fun openNextVolume(): Boolean {
+        val pager = photoPager ?: return false
+        val shown = pager.shown
+        val docId = runCatching { DocumentsContract.getDocumentId(shown) }.getOrNull() ?: return false
+        if (!docId.contains('/')) return false
+        val volume = docId.substringBeforeLast('/')
+        val parent = if (volume.contains('/')) volume.substringBeforeLast('/') else volume.substringBefore(':') + ":"
+        val granted = contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission && DocumentsContract.isTreeUri(it.uri) }
+            .map { it.uri }
+            .firstOrNull { treeCovers(it, parent) }
+        if (granted != null) return openFirstOfNextVolume(granted, volume, parent)
+        // Not reachable yet: the folder above is asked for once, and the next volume opens from it
+        Toast.makeText(this, R.string.next_volume_needs_folder, Toast.LENGTH_LONG).show()
+        onFolderPicked = { picked ->
+            val tree = picked?.takeIf { treeCovers(it, parent) }
+            if (tree != null) {
+                runCatching {
+                    contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                openFirstOfNextVolume(tree, volume, parent)
+            }
+        }
+        folderPicker.launch(DocumentsContract.buildDocumentUri(shown.authority, parent))
+        return true
+    }
+
+    /** Whether the folder granted as [tree] is [folder] or one above it. */
+    private fun treeCovers(tree: Uri, folder: String): Boolean {
+        val root = runCatching { DocumentsContract.getTreeDocumentId(tree) }.getOrNull() ?: return false
+        if (folder == root) return true
+        val prefix = if (root.endsWith(":") || root.endsWith("/")) root else "$root/"
+        return folder.startsWith(prefix)
+    }
+
+    private fun openFirstOfNextVolume(tree: Uri, volume: String, parent: String): Boolean {
+        val folders = childrenOf(contentResolver, tree, parent).orEmpty()
+            .filter { it.mime == MIME_DIR }
+            .sortedWith { a, b -> naturalCompare(a.name, b.name) }
+        val at = folders.indexOfFirst { it.docId == volume }
+        val next = folders.getOrNull(at + 1)?.takeIf { at >= 0 } ?: return false
+        val first = photosIn(childrenOf(contentResolver, tree, next.docId).orEmpty(), Settings.sortOrder(this))
+            .firstOrNull() ?: return false
+        savePosition()
+        startActivity(
+            Intent()
+                .setClassName(this, INTERNAL_VIEWER)
+                .setData(DocumentsContract.buildDocumentUriUsingTree(tree, first.docId))
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         )
         finish()
@@ -3028,12 +3079,12 @@ open class ViewerActivity : AppCompatActivity() {
         val key = bookmarkKey() ?: return
         val pager = photoPager
         if (pager != null) {
-            val at = pager.currentIndex.toLong()
+            val at = pager.currentFile.toLong()
             if (Marks.bookmarks(this, key).any { it.at == at }) {
                 Toast.makeText(this, R.string.bookmark_exists, Toast.LENGTH_SHORT).show()
                 return
             }
-            Marks.add(this, key, at, pager.names.getOrElse(at.toInt()) { "" })
+            Marks.add(this, key, at, pager.fileNames.getOrElse(at.toInt()) { "" })
             Toast.makeText(this, R.string.bookmark_added, Toast.LENGTH_SHORT).show()
             return
         }
@@ -3072,7 +3123,7 @@ open class ViewerActivity : AppCompatActivity() {
             .setTitle(R.string.bookmarks)
             .setItems(bookmarkLabels(marks)) { _, which ->
                 if (photoPager != null) {
-                    photoPager?.goTo(marks[which].at.toInt())
+                    photoPager?.goToFile(marks[which].at.toInt())
                 } else if (currentKind == FileKind.PDF || currentKind == FileKind.PDF_SIMPLE) {
                     tellPage(PortCommand.goToPage(marks[which].at.toInt()))
                 } else {
@@ -3118,7 +3169,7 @@ open class ViewerActivity : AppCompatActivity() {
         val comic = photoPager
         if (comic != null) {
             val comicKey = bookmarkKey() ?: return
-            if (comic.count >= 2) Positions.save(this, comicKey, comic.currentIndex + 1, comic.count)
+            if (comic.fileCount >= 2) Positions.save(this, comicKey, comic.currentFile + 1, comic.fileCount)
             return
         }
         val key = positionKey ?: return

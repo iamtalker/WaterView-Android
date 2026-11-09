@@ -117,6 +117,7 @@
     <string name="update_confirm">업데이트</string>
     <string name="update_opening">설치 확인 화면을 엽니다.</string>
     <string name="update_failed">업데이트 실패: %1$s</string>
+    <string name="next_volume_needs_folder">다음 권으로 넘어가려면 이 권이 들어 있는 상위 폴더를 허용해 주세요</string>
     <string name="update_failed_title">업데이트를 내려받지 못했습니다</string>
     <string name="update_open_releases">릴리즈 페이지 열기</string>
     <string name="previous_file">이전 파일</string>
