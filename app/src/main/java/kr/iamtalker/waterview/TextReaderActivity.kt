@@ -7,19 +7,16 @@ import android.net.Uri
 import android.os.Bundle
 import android.text.Spannable
 import android.text.SpannableString
-import android.text.StaticLayout
-import android.text.TextPaint
 import android.text.style.BackgroundColorSpan
 import android.view.Gravity
-import android.view.MotionEvent
-import android.view.ViewConfiguration
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
-import kotlin.math.abs
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
@@ -29,22 +26,19 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import java.nio.ByteBuffer
-import java.nio.charset.CharacterCodingException
-import java.nio.charset.Charset
 import java.util.concurrent.Executors
+import kotlin.math.abs
 
 /**
- * A plain text file, read on its own screen. The text is kept whole, in memory, and drawn a piece at
- * a time in a list, so scrolling never waits on a read: the whole file is in hand once it has
- * opened. The place it was left at, its bookmarks, its search and its reading aloud all count
- * characters of that whole text, so they agree with one another.
+ * A plain text file, on its own screen. The rows of the file are read from a copy as they are shown
+ * (see [TextIndex]), so the file is never held in memory whole, and the list moves line by line with
+ * no page snapping: a move is a plain scroll, which is what keeps it smooth.
  *
- * Files over [MAX_BYTES] are read from their start only, which is said on the screen.
+ * The place it was left at, the bookmarks and the search are byte offsets of the copy, so they agree
+ * with one another and stay the same from one opening to the next.
  */
 class TextReaderActivity : AppCompatActivity() {
 
@@ -55,25 +49,21 @@ class TextReaderActivity : AppCompatActivity() {
     private lateinit var bottomBar: View
     private var fullscreen = false
 
-    private var text: String = ""
-    /** Where each page starts, for the screen size and text size it was measured at. See ensurePages. */
-    private var pageStarts = IntArray(0)
-    /** Whether [pageStarts] covers the whole text. Until then the list shows the start, and the count is not final. */
-    private var pagesReady = false
-    /** A place to go to that is not measured yet, taken once it is. */
-    private var pendingJump: Long? = null
-    private var pagesFor: Pair<Int, Float>? = null
-    private val WINDOW = 4000
+    private var index: TextIndex? = null
     private var key: String? = null
-    private var highlight: IntRange? = null
+    /** The text being searched for, marked wherever it shows on the screen. */
+    private var query: String? = null
+    /** Where the last search found the query, so the next search goes on from there. */
+    private var lastHit: Long? = null
     private var readAloud: ReadAloud? = null
     private var seeking = false
     private var textSizeSp = 18f
+    private var ink = Color.BLACK
+    private var ground = Color.WHITE
 
-    private val loader = Executors.newSingleThreadExecutor()
-    /** Page measuring, on its own thread so a long file never holds up the reading or the search. */
-    private val pager = Executors.newSingleThreadExecutor()
-    private val adapter = ChunkAdapter()
+    /** Indexing and searching, one at a time, off the main thread. */
+    private val worker = Executors.newSingleThreadExecutor()
+    private val adapter = RowAdapter()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -83,15 +73,15 @@ class TextReaderActivity : AppCompatActivity() {
             return
         }
         textSizeSp = getSharedPreferences(PREFS, MODE_PRIVATE).getFloat(KEY_SIZE, 18f)
-        val ground = Settings.groundColor(this)
-        val ink = if (Settings.night(this)) Color.parseColor("#E0E0E0") else Color.parseColor("#222222")
-        adapter.ink = ink
-        setContentView(buildLayout(ground))
+        ground = Settings.groundColor(this)
+        ink = if (Settings.night(this)) Color.parseColor("#E0E0E0") else Color.parseColor("#222222")
+        setContentView(buildLayout())
         setSupportActionBar(toolbar)
         toolbar.title = nameOf(source)
+        toolbar.subtitle = getString(R.string.text_loading)
         toolbar.setNavigationOnClickListener { finish() }
-        // A short tap without much movement: the top third of the text goes up a screen, the bottom third
-        // down one, and the middle does nothing. A drag is left to the list to scroll.
+        // A short tap without much movement: the top third goes up a screen, the bottom third down one, and the
+        // middle shows or hides the bars. A drag is left to the list to scroll.
         val slop = ViewConfiguration.get(this).scaledTouchSlop
         var downX = 0f
         var downY = 0f
@@ -106,9 +96,7 @@ class TextReaderActivity : AppCompatActivity() {
                 MotionEvent.ACTION_UP -> {
                     val moved = abs(e.x - downX) + abs(e.y - downY)
                     val held = e.eventTime - downAt
-                    val isTap = moved < slop && held < 400
-                    // Posted rather than run now: the list's own touch handling for this release would cancel a scroll started here
-                    if (isTap) list.post { tapAt(e.y) }
+                    if (moved < slop && held < 400) list.post { tapAt(e.y) }
                 }
             }
             false
@@ -116,7 +104,7 @@ class TextReaderActivity : AppCompatActivity() {
         load(source)
     }
 
-    private fun buildLayout(ground: Int): View {
+    private fun buildLayout(): View {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(ground)
@@ -135,13 +123,12 @@ class TextReaderActivity : AppCompatActivity() {
         }
         seek = SeekBar(this).apply { max = 1000 }
         percent = TextView(this).apply {
-            setOnClickListener { askForPercent() }
-            setTextColor(adapter.ink)
+            setOnClickListener { askForLine() }
+            setTextColor(ink)
             textSize = 13f
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             setPadding(dp(8), 0, dp(12), 0)
         }
-        // Two rows, as the PDF viewer has them: the place along the text, then the controls
         val progressRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -179,8 +166,6 @@ class TextReaderActivity : AppCompatActivity() {
         root.addView(bottom, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         bottomBar = bottom
 
-        // One page per item: the list settles on a whole page after each move
-        PagerSnapHelper().attachToRecyclerView(list)
         list.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (!seeking) showPosition() }
         list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
@@ -189,7 +174,8 @@ class TextReaderActivity : AppCompatActivity() {
         })
         seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
-                if (fromUser && text.isNotEmpty()) jumpTo(text.length.toLong() * progress / 1000)
+                val idx = index ?: return
+                if (fromUser) jumpToByte(idx.length * progress / 1000)
             }
             override fun onStartTrackingTouch(bar: SeekBar) { seeking = true }
             override fun onStopTrackingTouch(bar: SeekBar) { seeking = false }
@@ -197,35 +183,87 @@ class TextReaderActivity : AppCompatActivity() {
         return root
     }
 
+    /** Opens the file: copies it and indexes its rows, then shows it at the place it was left. */
+    private fun load(source: Uri) {
+        worker.execute {
+            val opened = runCatching { TextIndex.open(this, source) }.getOrNull()
+            runOnUiThread {
+                if (isDestroyed) {
+                    opened?.close()
+                    return@runOnUiThread
+                }
+                if (opened == null) {
+                    Toast.makeText(this, R.string.text_unreadable, Toast.LENGTH_LONG).show()
+                    finish()
+                    return@runOnUiThread
+                }
+                index = opened
+                key = Positions.keyFor(contentResolver, source, opened.length)?.let { "b:$it" }
+                Diag.log(this, "text: indexed rows=${opened.rowCount} bytes=${opened.length}")
+                toolbar.subtitle = null
+                adapter.notifyDataSetChanged()
+                val left = key?.let { Marks.leftAt(this, it) }
+                if (left != null && left in 0 until opened.length) jumpToByte(left) else showPosition()
+            }
+        }
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun nameOf(source: Uri): String =
+        contentResolver.query(source, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            ?: source.lastPathSegment.orEmpty()
+
+    /** The row at the top of the screen. */
+    private fun topRow(): Int {
+        val lm = list.layoutManager as LinearLayoutManager
+        return lm.findFirstVisibleItemPosition().coerceAtLeast(0)
+    }
+
+    /** The byte offset of the row at the top of the screen. */
+    private fun topByte(): Long {
+        val idx = index ?: return 0
+        if (idx.rowCount == 0) return 0
+        return idx.rowStart(topRow().coerceAtMost(idx.rowCount - 1))
+    }
+
+    private fun showPosition() {
+        val idx = index
+        if (idx == null || idx.rowCount == 0) {
+            percent.text = ""
+            return
+        }
+        val top = topRow().coerceAtMost(idx.rowCount - 1)
+        if (!seeking) seek.progress = (idx.rowStart(top) * 1000 / maxOf(1L, idx.length)).toInt()
+        percent.text = "${top + 1} / ${idx.rowCount}"
+    }
+
+    /** Scrolls so the row holding byte offset [at] is at the top. */
+    private fun jumpToByte(at: Long) {
+        val idx = index ?: return
+        if (idx.rowCount == 0) return
+        val row = idx.rowAt(at.coerceIn(0, maxOf(0L, idx.length - 1)))
+        (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(row, 0)
+        list.post { showPosition() }
+        showPosition()
+    }
+
     /** Moves the text one screen up ([direction] -1) or down (1). */
     private fun scrollScreen(direction: Int) {
-        if (pageStarts.isEmpty()) return
-        val end = atEnd()
-        Diag.log(this, "text: step dir=$direction atEnd=$end pages=${pageStarts.size}")
-        if (direction > 0 && end) {
+        val h = list.height
+        if (h <= 0) return
+        if (direction > 0 && atEnd()) {
             openNextInFolder()
             return
         }
-        goToPage(currentPageIndex() + direction)
+        list.smoothScrollBy(0, direction * (h * 0.9f).toInt())
     }
 
-    /** The page on the screen: the list shows one page per item, snapped, so it is the item that is shown. */
-    private fun currentPageIndex(): Int {
-        val lm = list.layoutManager as LinearLayoutManager
-        val at = lm.findFirstCompletelyVisibleItemPosition().takeIf { it >= 0 } ?: lm.findFirstVisibleItemPosition()
-        return at.coerceAtLeast(0)
-    }
-
-    private fun goToPage(index: Int) {
-        if (pageStarts.isEmpty()) return
-        list.smoothScrollToPosition(index.coerceIn(0, pageStarts.size - 1))
-    }
-
-    /** Whether the page on the screen is the last one. */
+    /** Whether the last row is on the screen: the list cannot scroll any further down. */
     private fun atEnd(): Boolean {
-        // Not the end until every page is measured: a partly measured text would end early
-        if (!pagesReady || pageStarts.isEmpty()) return false
-        return currentPageIndex() >= pageStarts.size - 1
+        if (index == null) return false
+        return !list.canScrollVertically(1)
     }
 
     /** Opens the file after this one in the folder it was opened from. Nothing happens when there is none. */
@@ -234,7 +272,7 @@ class TextReaderActivity : AppCompatActivity() {
         val id = runCatching { android.provider.DocumentsContract.getDocumentId(current) }.getOrNull() ?: return
         val files = siblingsOf(this, current)
         val at = files.indexOfFirst { android.provider.DocumentsContract.getDocumentId(it) == id }
-        Diag.log(this, "text: next file at=$at of ${files.size} pages=${pageStarts.size}")
+        Diag.log(this, "text: next file at=$at of ${files.size}")
         val next = files.getOrNull(at + 1)?.takeIf { at >= 0 } ?: return
         startActivity(
             Intent()
@@ -245,18 +283,18 @@ class TextReaderActivity : AppCompatActivity() {
         finish()
     }
 
-    /** A tap at [y] in the list: the top third goes up a screen, the bottom third down one, the middle nothing. */
+    /** A tap at [y] in the list: the top third goes up a screen, the bottom third down one, the middle the bars. */
     private fun tapAt(y: Float) {
         val h = list.height.toFloat()
         if (h <= 0f) return
         when {
-            y < h / 3 -> goToPage(currentPageIndex() - 1)
-            y > h * 2 / 3 -> if (atEnd()) openNextInFolder() else goToPage(currentPageIndex() + 1)
+            y < h / 3 -> scrollScreen(-1)
+            y > h * 2 / 3 -> scrollScreen(1)
             else -> toggleFullscreen()
         }
     }
 
-    /** Hides or shows the title and the controls, and the system bars with them: the middle of the text, tapped. */
+    /** Hides or shows the title and the controls, and the system bars with them. */
     private fun toggleFullscreen() {
         fullscreen = !fullscreen
         toolbar.visibility = if (fullscreen) View.GONE else View.VISIBLE
@@ -267,220 +305,40 @@ class TextReaderActivity : AppCompatActivity() {
         else controller.show(WindowInsetsCompat.Type.systemBars())
     }
 
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    /** One row of the text, read from the copy when it is shown. */
+    private inner class RowAdapter : RecyclerView.Adapter<RowHolder>() {
+        override fun getItemCount(): Int = index?.rowCount ?: 0
 
-    private fun nameOf(source: Uri): String =
-        contentResolver.query(source, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
-            ?: source.lastPathSegment.orEmpty()
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RowHolder =
+            RowHolder(TextView(parent.context).apply {
+                setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+                setTextIsSelectable(false)
+            })
 
-    /** Reads and decodes the file off the main thread, then shows it at the place it was left. */
-    private fun load(source: Uri) {
-        loader.execute {
-            val bytes = runCatching {
-                contentResolver.openInputStream(source)?.use { it.readNBytes(MAX_BYTES.toInt()) }
-            }.getOrNull()
-            val decoded = bytes?.let { decode(it) }
-            runOnUiThread {
-                if (isDestroyed) return@runOnUiThread
-                if (decoded == null) {
-                    Toast.makeText(this, R.string.text_unreadable, Toast.LENGTH_LONG).show()
-                    finish()
-                    return@runOnUiThread
-                }
-                text = decoded
-
-                Diag.log(this, "text: opened chars=${decoded.length} bytes=${bytes?.size}")
-                key = bytes?.let { Positions.keyFor(contentResolver, source, it.size.toLong()) }
-                adapter.notifyDataSetChanged()
-                // The pages are measured first, so the place it was left at is found with the same page count
-                ensurePages {
-                    val left = key?.let { Marks.leftAt(this, it) }
-                    if (left != null && left in 0 until text.length.toLong()) jumpTo(left)
-                    else showPosition()
-                }
-                if ((bytes?.size?.toLong() ?: 0L) >= MAX_BYTES) {
-                    Toast.makeText(this, getString(R.string.text_truncated, MAX_BYTES / (1024 * 1024)), Toast.LENGTH_LONG).show()
-                }
-            }
+        override fun onBindViewHolder(holder: RowHolder, position: Int) {
+            val view = holder.view
+            view.setTextColor(ink)
+            view.textSize = textSizeSp
+            view.text = highlighted(index?.readRow(position) ?: "")
         }
     }
 
-    /** UTF-8 when the bytes are valid UTF-8, else the Korean code page. */
-    private fun decode(bytes: ByteArray): String =
-        try {
-            Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString()
-        } catch (_: CharacterCodingException) {
-            String(bytes, runCatching { Charset.forName("x-windows-949") }.getOrElse { Charset.forName("EUC-KR") })
-        }
+    private class RowHolder(val view: TextView) : RecyclerView.ViewHolder(view)
 
-
-    /** The character at the top of the screen. */
-    private fun topOffset(): Int {
-        if (pageStarts.isEmpty()) return 0
-        return pageStarts[currentPageIndex().coerceIn(0, pageStarts.size - 1)]
-    }
-
-    private fun showPosition() {
-        if (text.isEmpty()) {
-            percent.text = ""
-            return
+    /** [row] with every place the search query is found marked. */
+    private fun highlighted(row: String): CharSequence {
+        val q = query
+        if (q.isNullOrEmpty()) return row
+        val span = SpannableString(row)
+        var at = row.indexOf(q)
+        while (at >= 0) {
+            span.setSpan(
+                BackgroundColorSpan(Color.parseColor("#FFEB3B")),
+                at, at + q.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+            at = row.indexOf(q, at + q.length)
         }
-        val at = topOffset()
-        val fraction = at.toLong() * 1000 / text.length
-        if (!seeking) seek.progress = fraction.toInt()
-        val (current, total) = screenPages()
-        // No pages yet while they are measured: say so rather than show a count that is wrong
-        percent.text = when {
-            total == 0 -> "… / …"
-            !pagesReady -> "$current / …"
-            else -> "$current / $total"
-        }
-    }
-
-    /** The screen the text is on, and how many screens the whole text makes, a screen counting as a page. */
-    /**
-     * Where each page starts, for the size of the screen and the text size: as many whole lines as fit
-     * on a screen, measured once here so the page count is the same every time it is shown. Done off the
-     * main thread; [then] runs on it once the pages are known, and again if the size changes.
-     */
-    private fun ensurePages(then: () -> Unit) {
-        val width = list.width - dp(32)
-        val height = list.height - dp(16)
-        if (width <= 0 || height <= 0) {
-            list.post { ensurePages(then) }
-            return
-        }
-        if (pagesReady && pagesFor == Pair(width, textSizeSp) && pageStarts.isNotEmpty()) {
-            then()
-            return
-        }
-        val snapshot = text
-        val size = textSizeSp
-        val cacheKey = "${snapshot.hashCode()}:${snapshot.length}:$width:$size"
-        // Kept for the process, so reopening the same text at the same size does not measure it again
-        if (PageCache.key == cacheKey) {
-            pageStarts = PageCache.starts
-            adapter.notifyDataSetChanged()
-            pagesFor = Pair(width, size)
-            pagesReady = true
-            then()
-            return
-        }
-        pagesReady = false
-        var shownFirst = false
-        pager.execute {
-            Diag.log(this, "text: pages start chars=${snapshot.length} w=$width h=$height size=$size")
-            val breaks = runCatching {
-                computePages(snapshot, width, height, size) { partial ->
-                    // Shown as they come, so the start of a long text is there at once
-                    runOnUiThread {
-                        if (isDestroyed || snapshot != text || pagesReady) return@runOnUiThread
-                        pageStarts = partial
-                        adapter.notifyDataSetChanged()
-                        pagesFor = Pair(width, size)
-                        if (!shownFirst) {
-                            shownFirst = true
-                            then()
-                        } else {
-                            showPosition()
-                        }
-                    }
-                }
-            }
-                .onFailure { Diag.log(this, "text: pages failed ${it.javaClass.simpleName} ${it.message}") }
-                .getOrDefault(IntArray(0))
-            Diag.log(this, "text: pages done count=${breaks.size}")
-            // Kept even if the screen has gone meanwhile, so the next opening has them at once
-            if (breaks.isNotEmpty()) {
-                PageCache.key = cacheKey
-                PageCache.starts = breaks
-            }
-            runOnUiThread {
-                if (isDestroyed || snapshot != text) {
-                    Diag.log(this, "text: pages dropped destroyed=$isDestroyed changed=${snapshot != text}")
-                    return@runOnUiThread
-                }
-                pageStarts = breaks
-                adapter.notifyDataSetChanged()
-                pagesFor = Pair(width, size)
-                pagesReady = true
-                if (!shownFirst) {
-                    shownFirst = true
-                    then()
-                } else {
-                    val jump = pendingJump
-                    pendingJump = null
-                    if (jump != null) jumpTo(jump) else showPosition()
-                }
-            }
-        }
-    }
-
-    /** Where each page starts: as many whole lines as fit in [height], measured a window at a time. */
-    private fun computePages(s: String, width: Int, height: Int, size: Float, publish: (IntArray) -> Unit): IntArray {
-        // Measured with the same paint and font padding as the TextView that draws the page, so a page
-        // measured here fills the same screen on any phone's font
-        val sample = TextView(this).apply {
-            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
-            textSize = size
-        }
-        val paint = sample.paint
-        val includePad = sample.includeFontPadding
-        val out = ArrayList<Int>()
-        var at = 0
-        while (at < s.length) {
-            out.add(at)
-            if (out.size % 200 == 0) publish(out.toIntArray())
-            val windowEnd = minOf(s.length, at + WINDOW)
-            val layout = StaticLayout.Builder.obtain(s, at, windowEnd, paint, width).setIncludePad(includePad).build()
-            var fit = 0
-            for (line in 0 until layout.lineCount) {
-                if (layout.getLineBottom(line) > height) break
-                fit = line
-            }
-            var end = layout.getLineEnd(fit)
-            if (end <= at) end = minOf(windowEnd, at + 1)
-            at = end
-        }
-        return out.toIntArray()
-    }
-
-    /** The last of [points] at or before [offset], by a search, so a page or piece is found in a few steps. */
-    /** Where page [i] ends: where the next starts, or the end of the text for the last. */
-    private fun pageEnd(i: Int): Int = if (i + 1 < pageStarts.size) pageStarts[i + 1] else text.length
-
-    private fun indexAtOrBefore(points: IntArray, offset: Int): Int {
-        if (points.isEmpty()) return 0
-        var lo = 0
-        var hi = points.size - 1
-        while (lo < hi) {
-            val mid = (lo + hi + 1) / 2
-            if (points[mid] <= offset) lo = mid else hi = mid - 1
-        }
-        return lo
-    }
-
-    private fun screenPages(): Pair<Int, Int> {
-        // Fixed once per text size from the screen's size (see ensurePages), so the total does not drift
-        if (pageStarts.isEmpty()) return Pair(0, 0)
-        return Pair(indexAtOrBefore(pageStarts, topOffset()) + 1, pageStarts.size)
-    }
-
-    private fun jumpTo(offset: Long) {
-        if (pageStarts.isEmpty()) return
-        val at = offset.coerceIn(0, text.length.toLong() - 1).toInt()
-        // Not measured that far yet: wait for the rest of the pages, then go there
-        if (!pagesReady && at >= pageStarts.last()) {
-            pendingJump = offset
-            showPosition()
-            return
-        }
-        // The page holding that character; the list snaps to whole pages
-        list.scrollToPosition(indexAtOrBefore(pageStarts, at))
-        // The readout is drawn again once the list has laid the page out, not from before it did
-        list.post { showPosition() }
-        showPosition()
+        return span
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -511,7 +369,7 @@ class TextReaderActivity : AppCompatActivity() {
     }
 
     private fun askForSearch() {
-        if (text.isEmpty()) return
+        if (index == null) return
         val input = EditText(this).apply { setSingleLine(true) }
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.search_in_document)
@@ -521,34 +379,40 @@ class TextReaderActivity : AppCompatActivity() {
             .show()
     }
 
-    /** Finds the next place [query] occurs after the top of the screen, wrapping to the start. */
-    private fun find(query: String) {
-        if (query.isEmpty()) return
-        val from = (highlight?.last ?: topOffset()) + 1
-        var at = text.indexOf(query, from.coerceAtMost(text.length), ignoreCase = true)
-        if (at < 0) at = text.indexOf(query, 0, ignoreCase = true)
-        if (at < 0) {
-            Toast.makeText(this, R.string.text_search_none, Toast.LENGTH_SHORT).show()
-            return
+    /** Finds the next place [q] occurs after the last hit, or after the top of the screen for a new query. */
+    private fun find(q: String) {
+        val idx = index ?: return
+        if (q.isEmpty()) return
+        val needle = q.toByteArray(idx.charset)
+        val from = if (q == query && lastHit != null) lastHit!! + 1 else topByte() + 1
+        worker.execute {
+            val at = runCatching { idx.find(needle, from) }.getOrNull()
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                if (at == null) {
+                    Toast.makeText(this, R.string.text_search_none, Toast.LENGTH_SHORT).show()
+                    return@runOnUiThread
+                }
+                query = q
+                lastHit = at
+                adapter.notifyDataSetChanged()
+                jumpToByte(at)
+            }
         }
-        highlight = at until at + query.length
-        adapter.notifyDataSetChanged()
-        jumpTo(at.toLong())
     }
 
     private fun addBookmark() {
         val k = key ?: return
-        val at = topOffset().toLong()
+        val idx = index ?: return
+        val at = topByte()
         if (Marks.bookmarks(this, k).any { it.at == at }) {
             Toast.makeText(this, R.string.bookmark_exists, Toast.LENGTH_SHORT).show()
             return
         }
-        Marks.add(this, k, at, snippetAt(at.toInt()))
+        val label = idx.readRow(topRow()).take(20).trim()
+        Marks.add(this, k, at, label)
         Toast.makeText(this, R.string.bookmark_added, Toast.LENGTH_SHORT).show()
     }
-
-    private fun snippetAt(at: Int): String =
-        text.substring(at, minOf(text.length, at + 20)).replace('\n', ' ').trim()
 
     private fun showBookmarks() {
         val k = key ?: return
@@ -562,7 +426,7 @@ class TextReaderActivity : AppCompatActivity() {
         }.toTypedArray()
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.bookmarks)
-            .setItems(labels) { _, which -> jumpTo(marks[which].at) }
+            .setItems(labels) { _, which -> jumpToByte(marks[which].at) }
             .setNeutralButton(R.string.bookmark_remove) { _, _ -> removeBookmark(k) }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
@@ -581,26 +445,28 @@ class TextReaderActivity : AppCompatActivity() {
             .show()
     }
 
-    /** The place along the text, as a percent, asked for and gone to. */
-    private fun askForPercent() {
-        if (text.isEmpty()) return
-        val (current, total) = screenPages()
+    /** Asks for a line number and goes to it. The count is of lines, which is exact for any size of file. */
+    private fun askForLine() {
+        val idx = index ?: return
+        if (idx.rowCount == 0) return
+        val total = idx.rowCount
         val entry = EditText(this).apply {
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
-            setText(current.toString())
+            setText((topRow() + 1).toString())
             setSelection(text.length)
         }
         MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.go_to_page)
-            .setMessage(getString(R.string.page_range, total))
+            .setTitle(R.string.go_to_line)
+            .setMessage(getString(R.string.line_range, total))
             .setView(entry)
             .setPositiveButton(R.string.go) { _, _ ->
-                val p = entry.text.toString().toIntOrNull()
-                if (p != null && p in 1..total) {
-                    // The page's own start, as measured for this screen
-                    jumpTo(pageStarts.getOrElse(p - 1) { 0 }.toLong())
+                val n = entry.text.toString().toIntOrNull()
+                if (n != null && n in 1..total) {
+                    (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(n - 1, 0)
+                    list.post { showPosition() }
+                    showPosition()
                 } else {
-                    Toast.makeText(this, getString(R.string.page_range, total), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.line_range, total), Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton(android.R.string.cancel, null)
@@ -613,27 +479,33 @@ class TextReaderActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.text_size)
             .setItems(labels) { _, which ->
+                val at = topByte()
                 textSizeSp = sizes[which].toFloat()
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit().putFloat(KEY_SIZE, textSizeSp).apply()
-                adapter.size = textSizeSp
                 adapter.notifyDataSetChanged()
-                val at = topOffset().toLong()
-                ensurePages { jumpTo(at) }
+                jumpToByte(at)
             }
             .show()
     }
 
+    /** Reads the text from the top of the screen on, a few hundred thousand characters at a time. */
     private fun toggleReadAloud() {
+        val idx = index ?: return
         val reader = readAloud
         if (reader?.isPlaying == true) {
             reader.stop()
             return
         }
-        if (text.isEmpty()) return
-        val from = topOffset()
+        if (idx.rowCount == 0) return
+        val sb = StringBuilder()
+        var row = topRow()
+        while (row < idx.rowCount && sb.length < READ_AHEAD_CHARS) {
+            sb.append(idx.readRow(row)).append('\n')
+            row++
+        }
         val fresh = ReadAloud(this) { invalidateOptionsMenu() }
         readAloud = fresh
-        fresh.start(text.substring(from))
+        fresh.start(sb.toString())
         invalidateOptionsMenu()
     }
 
@@ -643,76 +515,30 @@ class TextReaderActivity : AppCompatActivity() {
         val size = getSharedPreferences(PREFS, MODE_PRIVATE).getFloat(KEY_SIZE, 18f)
         if (size != textSizeSp) {
             textSizeSp = size
-            adapter.size = size
             adapter.notifyDataSetChanged()
-            ensurePages { showPosition() }
         }
     }
 
     override fun onStop() {
         readAloud?.stop()
         val k = key
-        if (k != null && text.isNotEmpty()) Marks.setLeftAt(this, k, topOffset().toLong())
+        if (k != null && index != null) Marks.setLeftAt(this, k, topByte())
         super.onStop()
     }
 
     override fun onDestroy() {
         readAloud?.release()
         readAloud = null
-        loader.shutdown()
-        pager.shutdownNow()
+        worker.shutdownNow()
+        index?.close()
+        index = null
         super.onDestroy()
-    }
-
-    /** One piece of the text, drawn as a line of its own in the list. */
-    private inner class ChunkAdapter : RecyclerView.Adapter<ChunkHolder>() {
-        var ink: Int = Color.BLACK
-        var size: Float = textSizeSp
-
-        // One item is one page, as measured for the screen, so an item always fits on the screen
-        override fun getItemCount(): Int = pageStarts.size
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ChunkHolder =
-            ChunkHolder(TextView(parent.context).apply {
-                setTextColor(ink)
-                setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
-                setTextIsSelectable(false)
-            })
-
-        override fun onBindViewHolder(holder: ChunkHolder, position: Int) {
-            val view = holder.view
-            view.setTextColor(ink)
-            view.textSize = textSizeSp
-            val from = pageStarts[position]
-            val to = pageEnd(position)
-            val piece = SpannableString(text.substring(from, to))
-            highlight?.let { h ->
-                val a = maxOf(h.first, from)
-                val b = minOf(h.last + 1, to)
-                if (a < b) {
-                    piece.setSpan(
-                        BackgroundColorSpan(Color.parseColor("#FFEB3B")),
-                        a - from, b - from, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
-                    )
-                }
-            }
-            view.text = piece
-        }
-    }
-
-    private class ChunkHolder(val view: TextView) : RecyclerView.ViewHolder(view)
-
-    /** The page starts of the last text measured, with the key it was measured under. See ensurePages. */
-    private object PageCache {
-        @Volatile var key: String? = null
-        @Volatile var starts = IntArray(0)
     }
 
     private companion object {
         const val PREFS = "text_reader"
         const val KEY_SIZE = "size_sp"
-        const val MAX_BYTES = 20L * 1024 * 1024
-        const val PIECE = 1200
+        const val READ_AHEAD_CHARS = 200_000
         const val ID_SEARCH = 1
         const val ID_BOOKMARK_ADD = 2
         const val ID_BOOKMARKS = 3

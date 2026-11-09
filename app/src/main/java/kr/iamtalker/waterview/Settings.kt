@@ -29,11 +29,13 @@ object Settings {
     private const val KEY_APP_NIGHT = "app_night"
     private const val KEY_TAP_EDGE = "tap_edge_percent"
 
-    val TAP_EDGE_CHOICES = intArrayOf(22, 28, 34, 40)
+    /** The tap zone on each side of a page, in percent of the width: any whole value from 10 to 40. */
+    const val TAP_EDGE_MIN = 10
+    const val TAP_EDGE_MAX = 40
 
     fun tapEdgePercent(context: Context): Int {
         val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_TAP_EDGE, 28)
-        return if (saved in TAP_EDGE_CHOICES) saved else 28
+        return saved.coerceIn(TAP_EDGE_MIN, TAP_EDGE_MAX)
     }
 
     fun setTapEdgePercent(context: Context, percent: Int) {

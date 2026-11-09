@@ -157,6 +157,9 @@
     <string name="unknown_shown_as_text">알 수 없는 형식 · 텍스트로 표시</string>
     <string name="page_number">페이지 번호</string>
     <string name="page_range">1~%1$d페이지</string>
+    <string name="text_loading">불러오는 중…</string>
+    <string name="go_to_line">줄 이동</string>
+    <string name="line_range">1~%1$d줄</string>
     <string name="page_out_of_range">1부터 %1$d 사이의 페이지를 입력하세요.</string>
     <string name="go">이동</string>
     <!-- What the readout says while the thumb is dragged through anything that is not

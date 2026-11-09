@@ -2,6 +2,8 @@ package kr.iamtalker.waterview
 
 import android.os.Bundle
 import android.view.View
+import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
@@ -65,14 +67,35 @@ class SettingsActivity : AppCompatActivity() {
             tapEdgeValue.text = getString(R.string.tap_edge_percent, Settings.tapEdgePercent(this))
         }
         tapEdgeRow.setOnClickListener {
-            val choices = Settings.TAP_EDGE_CHOICES
-            val checked = choices.indexOf(Settings.tapEdgePercent(this)).coerceAtLeast(0)
+            // Dragged to a value, with the percent shown as it moves; saved when the reader says OK
+            val box = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                val pad = (24 * resources.displayMetrics.density).toInt()
+                setPadding(pad, pad / 2, pad, 0)
+            }
+            val label = TextView(this).apply {
+                textSize = 16f
+                gravity = android.view.Gravity.CENTER
+            }
+            val bar = SeekBar(this).apply {
+                max = Settings.TAP_EDGE_MAX - Settings.TAP_EDGE_MIN
+                progress = Settings.tapEdgePercent(this@SettingsActivity) - Settings.TAP_EDGE_MIN
+            }
+            fun shown(value: Int) { label.text = getString(R.string.tap_edge_percent, value) }
+            shown(Settings.tapEdgePercent(this))
+            bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: SeekBar, p: Int, fromUser: Boolean) = shown(Settings.TAP_EDGE_MIN + p)
+                override fun onStartTrackingTouch(s: SeekBar) = Unit
+                override fun onStopTrackingTouch(s: SeekBar) = Unit
+            })
+            box.addView(label)
+            box.addView(bar)
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.tap_edge_title)
-                .setSingleChoiceItems(R.array.tap_edge_choices, checked) { dialog, which ->
-                    Settings.setTapEdgePercent(this, choices[which])
+                .setView(box)
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    Settings.setTapEdgePercent(this, Settings.TAP_EDGE_MIN + bar.progress)
                     refreshTapEdge()
-                    dialog.dismiss()
                 }
                 .setNegativeButton(R.string.cancel, null)
                 .show()
