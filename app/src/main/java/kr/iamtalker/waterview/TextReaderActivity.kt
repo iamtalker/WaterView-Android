@@ -29,6 +29,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -55,7 +56,6 @@ class TextReaderActivity : AppCompatActivity() {
     private var fullscreen = false
 
     private var text: String = ""
-    private var starts = IntArray(0)
     /** Where each page starts, for the screen size and text size it was measured at. See ensurePages. */
     private var pageStarts = IntArray(0)
     private var pagesFor: Pair<Int, Float>? = null
@@ -175,6 +175,8 @@ class TextReaderActivity : AppCompatActivity() {
         root.addView(bottom, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         bottomBar = bottom
 
+        // One page per item: the list settles on a whole page after each move
+        PagerSnapHelper().attachToRecyclerView(list)
         list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 if (!seeking) showPosition()
@@ -192,20 +194,32 @@ class TextReaderActivity : AppCompatActivity() {
 
     /** Moves the text one screen up ([direction] -1) or down (1). */
     private fun scrollScreen(direction: Int) {
-        val h = list.height
-        if (h <= 0) return
-        if (direction > 0 && atEnd()) {
+        if (pageStarts.isEmpty()) return
+        val end = atEnd()
+        Diag.log(this, "text: step dir=$direction atEnd=$end pages=${pageStarts.size}")
+        if (direction > 0 && end) {
             openNextInFolder()
             return
         }
-        list.smoothScrollBy(0, direction * (h * 0.9f).toInt())
+        goToPage(currentPageIndex() + direction)
     }
 
-    /** Whether the last of the text is on the screen. */
+    /** The page on the screen: the list shows one page per item, snapped, so it is the item that is shown. */
+    private fun currentPageIndex(): Int {
+        val lm = list.layoutManager as LinearLayoutManager
+        val at = lm.findFirstCompletelyVisibleItemPosition().takeIf { it >= 0 } ?: lm.findFirstVisibleItemPosition()
+        return at.coerceAtLeast(0)
+    }
+
+    private fun goToPage(index: Int) {
+        if (pageStarts.isEmpty()) return
+        list.smoothScrollToPosition(index.coerceIn(0, pageStarts.size - 1))
+    }
+
+    /** Whether the page on the screen is the last one. */
     private fun atEnd(): Boolean {
-        if (starts.isEmpty()) return false
-        // The list cannot scroll any further down: a last piece taller than the screen is never fully visible
-        return !list.canScrollVertically(1)
+        if (pageStarts.isEmpty()) return false
+        return currentPageIndex() >= pageStarts.size - 1
     }
 
     /** Opens the file after this one in the folder it was opened from. Nothing happens when there is none. */
@@ -214,6 +228,7 @@ class TextReaderActivity : AppCompatActivity() {
         val id = runCatching { android.provider.DocumentsContract.getDocumentId(current) }.getOrNull() ?: return
         val files = siblingsOf(this, current)
         val at = files.indexOfFirst { android.provider.DocumentsContract.getDocumentId(it) == id }
+        Diag.log(this, "text: next file at=$at of ${files.size} pages=${pageStarts.size}")
         val next = files.getOrNull(at + 1)?.takeIf { at >= 0 } ?: return
         startActivity(
             Intent()
@@ -228,10 +243,9 @@ class TextReaderActivity : AppCompatActivity() {
     private fun tapAt(y: Float) {
         val h = list.height.toFloat()
         if (h <= 0f) return
-        val step = (h * 0.9f).toInt()
         when {
-            y < h / 3 -> list.smoothScrollBy(0, -step)
-            y > h * 2 / 3 -> if (atEnd()) openNextInFolder() else list.smoothScrollBy(0, step)
+            y < h / 3 -> goToPage(currentPageIndex() - 1)
+            y > h * 2 / 3 -> if (atEnd()) openNextInFolder() else goToPage(currentPageIndex() + 1)
             else -> toggleFullscreen()
         }
     }
@@ -269,8 +283,8 @@ class TextReaderActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 text = decoded
-                starts = pieceStarts(decoded)
-                Diag.log(this, "text: opened chars=${decoded.length} pieces=${starts.size} bytes=${bytes?.size}")
+
+                Diag.log(this, "text: opened chars=${decoded.length} bytes=${bytes?.size}")
                 key = bytes?.let { Positions.keyFor(contentResolver, source, it.size.toLong()) }
                 adapter.notifyDataSetChanged()
                 // The pages are measured first, so the place it was left at is found with the same page count
@@ -294,40 +308,11 @@ class TextReaderActivity : AppCompatActivity() {
             String(bytes, runCatching { Charset.forName("x-windows-949") }.getOrElse { Charset.forName("EUC-KR") })
         }
 
-    /** Where each piece starts, cut at a line break near [PIECE] characters where one is there. */
-    private fun pieceStarts(s: String): IntArray {
-        val out = ArrayList<Int>()
-        var start = 0
-        while (start < s.length) {
-            out.add(start)
-            var end = minOf(s.length, start + PIECE)
-            if (end < s.length) {
-                val nl = s.lastIndexOf('\n', end)
-                if (nl > start) end = nl + 1
-            }
-            start = end
-        }
-        return out.toIntArray()
-    }
-
-    private fun pieceEnd(i: Int): Int = if (i + 1 < starts.size) starts[i + 1] else text.length
-
-    /** The piece holding the character at [offset]. */
-    private fun pieceOf(offset: Int): Int {
-        var lo = 0
-        var hi = starts.size - 1
-        while (lo < hi) {
-            val mid = (lo + hi + 1) / 2
-            if (starts[mid] <= offset) lo = mid else hi = mid - 1
-        }
-        return lo
-    }
 
     /** The character at the top of the screen. */
     private fun topOffset(): Int {
-        if (starts.isEmpty()) return 0
-        val first = (list.layoutManager as LinearLayoutManager).findFirstVisibleItemPosition()
-        return starts[first.coerceIn(0, starts.size - 1)]
+        if (pageStarts.isEmpty()) return 0
+        return pageStarts[currentPageIndex().coerceIn(0, pageStarts.size - 1)]
     }
 
     private fun showPosition() {
@@ -366,6 +351,7 @@ class TextReaderActivity : AppCompatActivity() {
         // Kept for the process, so reopening the same text at the same size does not measure it again
         if (PageCache.key == cacheKey) {
             pageStarts = PageCache.starts
+            adapter.notifyDataSetChanged()
             pagesFor = Pair(width, size)
             then()
             return
@@ -387,6 +373,7 @@ class TextReaderActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 pageStarts = breaks
+                adapter.notifyDataSetChanged()
                 pagesFor = Pair(width, size)
                 then()
             }
@@ -420,6 +407,9 @@ class TextReaderActivity : AppCompatActivity() {
     }
 
     /** The last of [points] at or before [offset], by a search, so a page or piece is found in a few steps. */
+    /** Where page [i] ends: where the next starts, or the end of the text for the last. */
+    private fun pageEnd(i: Int): Int = if (i + 1 < pageStarts.size) pageStarts[i + 1] else text.length
+
     private fun indexAtOrBefore(points: IntArray, offset: Int): Int {
         if (points.isEmpty()) return 0
         var lo = 0
@@ -438,15 +428,10 @@ class TextReaderActivity : AppCompatActivity() {
     }
 
     private fun jumpTo(offset: Long) {
-        if (starts.isEmpty()) return
+        if (pageStarts.isEmpty()) return
         val at = offset.coerceIn(0, text.length.toLong() - 1).toInt()
-        if (at >= text.length - 1) {
-            // The very end: put the last piece at the bottom of the screen, not the top, so the last screen shows
-            list.scrollToPosition(starts.size - 1)
-            list.post { list.scrollBy(0, list.height * 4) }
-        } else {
-            (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(pieceOf(at), 0)
-        }
+        // The page holding that character; the list snaps to whole pages
+        list.scrollToPosition(indexAtOrBefore(pageStarts, at))
         showPosition()
     }
 
@@ -636,7 +621,8 @@ class TextReaderActivity : AppCompatActivity() {
         var ink: Int = Color.BLACK
         var size: Float = textSizeSp
 
-        override fun getItemCount(): Int = starts.size
+        // One item is one page, as measured for the screen, so an item always fits on the screen
+        override fun getItemCount(): Int = pageStarts.size
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ChunkHolder =
             ChunkHolder(TextView(parent.context).apply {
@@ -649,8 +635,8 @@ class TextReaderActivity : AppCompatActivity() {
             val view = holder.view
             view.setTextColor(ink)
             view.textSize = textSizeSp
-            val from = starts[position]
-            val to = pieceEnd(position)
+            val from = pageStarts[position]
+            val to = pageEnd(position)
             val piece = SpannableString(text.substring(from, to))
             highlight?.let { h ->
                 val a = maxOf(h.first, from)

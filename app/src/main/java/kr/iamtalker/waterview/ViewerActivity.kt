@@ -2248,6 +2248,7 @@ open class ViewerActivity : AppCompatActivity() {
             updateRotate()
             pageAt = at + 1
             pageTotal = of
+            Diag.log(this@ViewerActivity, "comic: page ${at + 1} of $of")
             setPageIndicatorText()
             showPageIndicator()
             // One photo left after a delete, which has no count to show
