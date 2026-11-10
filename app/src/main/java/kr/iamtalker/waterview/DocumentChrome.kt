@@ -234,21 +234,25 @@ internal class DocumentChrome(
     /** The search bar opened or closed: the title bar stays for as long as it is open. */
     fun searching(open: Boolean) {
         searching = open
-        if (open) show(true)
+        if (open) show(true) else if (!readerVisible) show(false)
     }
 
     /** A menu or a box opened from the bar takes the window's focus; the bar stays under it. */
     fun focusChanged(hasFocus: Boolean) {
         focused = hasFocus
-        if (!hasFocus) show(true)
+        if (!hasFocus) show(true) else if (!readerVisible) show(false)
     }
 
     private fun held() = searching || !focused || screenReader()
 
-    /** All of the bar on screen, or none of it, in the time the rest of the way takes. */
+    /**
+     * All of the bar on screen, or none of it, in the time the rest of the way takes. In full screen
+     * the bar stays away whatever asks for it (a scroll to the top, a reveal from the page), unless
+     * something holds it up, so the title bar is never left on its own.
+     */
     private fun show(visible: Boolean) {
         val height = top.height.toFloat()
-        val y = if (visible || held()) 0f else -height
+        val y = if ((visible && readerVisible) || held()) 0f else -height
         top.animate().cancel()
         val distance = abs(y - top.translationY)
         if (distance == 0f || height <= 0f) {

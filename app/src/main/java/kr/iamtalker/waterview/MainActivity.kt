@@ -12,6 +12,7 @@ import android.text.format.DateUtils
 import android.text.format.Formatter
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -205,25 +206,64 @@ class MainActivity : AppCompatActivity() {
                 .setTitle(getString(R.string.update_new_version, release.version))
                 .setMessage(R.string.update_install_hint)
                 .setNegativeButton(android.R.string.cancel, null)
-                .setPositiveButton(R.string.update_confirm) { _, _ ->
-                    lifecycleScope.launch {
-                        runCatching { UpdateChecker.downloadAndInstall(this@MainActivity, release) }
-                            .onSuccess { Toast.makeText(this@MainActivity, R.string.update_opening, Toast.LENGTH_LONG).show() }
-                            .onFailure {
-                                MaterialAlertDialogBuilder(this@MainActivity)
-                                    .setTitle(R.string.update_failed_title)
-                                    .setMessage(getString(R.string.update_failed, it.message))
-                                    .setNegativeButton(android.R.string.cancel, null)
-                                    .setPositiveButton(R.string.update_open_releases) { _, _ ->
-                                        runCatching {
-                                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.RELEASES_URL)))
-                                        }
-                                    }
-                                    .show()
-                            }
+                .setPositiveButton(R.string.update_confirm) { _, _ -> installWithProgress(release) }
+                .show()
+        }
+    }
+
+    /**
+     * Downloads and installs the release while a dialog shows each step: the percentage while it
+     * downloads, then the install stages. Once the phone's confirmation screen opens, the dialog goes.
+     */
+    private fun installWithProgress(release: UpdateChecker.Release) {
+        val density = resources.displayMetrics.density
+        val status = TextView(this).apply { textSize = 16f; text = getString(R.string.update_preparing) }
+        val bar = LinearProgressIndicator(this).apply { isIndeterminate = true }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (24 * density).toInt()
+            setPadding(pad, pad / 2, pad, 0)
+            addView(status)
+            addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = (12 * density).toInt()
+            })
+        }
+        val progressDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.update_new_version, release.version))
+            .setView(content)
+            .setCancelable(false)
+            .show()
+        lifecycleScope.launch {
+            runCatching {
+                UpdateChecker.downloadAndInstall(this@MainActivity, release) { percent, text ->
+                    runOnUiThread {
+                        status.text = text
+                        if (percent >= 0) {
+                            bar.isIndeterminate = false
+                            bar.setProgressCompat(percent, true)
+                        } else {
+                            bar.isIndeterminate = true
+                        }
                     }
                 }
-                .show()
+            }
+                .onSuccess {
+                    progressDialog.dismiss()
+                    Toast.makeText(this@MainActivity, R.string.update_opening, Toast.LENGTH_LONG).show()
+                }
+                .onFailure {
+                    progressDialog.dismiss()
+                    MaterialAlertDialogBuilder(this@MainActivity)
+                        .setTitle(R.string.update_failed_title)
+                        .setMessage(getString(R.string.update_failed, it.message))
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .setPositiveButton(R.string.update_open_releases) { _, _ ->
+                            runCatching {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.RELEASES_URL)))
+                            }
+                        }
+                        .show()
+                }
         }
     }
 
