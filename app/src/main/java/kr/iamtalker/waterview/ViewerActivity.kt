@@ -3124,42 +3124,19 @@ open class ViewerActivity : AppCompatActivity() {
      */
     private fun showBookmarks() {
         val key = bookmarkKey() ?: return
-        val marks = Marks.bookmarks(this, key)
-        if (marks.isEmpty()) {
-            Toast.makeText(this, R.string.no_bookmarks, Toast.LENGTH_SHORT).show()
-            return
-        }
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.bookmarks)
-            .setItems(bookmarkLabels(marks)) { _, which ->
+        BookmarkList.show(
+            this, key, R.string.bookmarks,
+            label = { i, mark -> if (mark.label.isEmpty()) getString(R.string.bookmark_item, i + 1) else "${i + 1}. ${mark.label}" },
+            onJump = { mark ->
                 if (photoPager != null) {
-                    photoPager?.goToFile(marks[which].at.toInt())
+                    photoPager?.goToFile(mark.at.toInt())
                 } else if (currentKind == FileKind.PDF || currentKind == FileKind.PDF_SIMPLE) {
-                    tellPage(PortCommand.goToPage(marks[which].at.toInt()))
+                    tellPage(PortCommand.goToPage(mark.at.toInt()))
                 } else {
-                    tellPage(PortCommand.goToOffset(marks[which].at))
+                    tellPage(PortCommand.goToOffset(mark.at))
                 }
-            }
-            .setNeutralButton(R.string.bookmark_remove) { _, _ -> removeBookmark(key) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    /** The names of bookmarks in the list: their numbers, and the words at each where they were put. */
-    private fun bookmarkLabels(marks: List<Marks.Bookmark>): Array<String> =
-        marks.mapIndexed { i, mark ->
-            if (mark.label.isEmpty()) getString(R.string.bookmark_item, i + 1)
-            else "${i + 1}. ${mark.label}"
-        }.toTypedArray()
-
-    private fun removeBookmark(key: String) {
-        val marks = Marks.bookmarks(this, key)
-        if (marks.isEmpty()) return
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.bookmark_remove)
-            .setItems(bookmarkLabels(marks)) { _, which -> Marks.remove(this, key, marks[which].at) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+            },
+        )
     }
 
     private val saveHandler = Handler(Looper.getMainLooper())

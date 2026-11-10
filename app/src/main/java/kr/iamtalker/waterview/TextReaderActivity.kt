@@ -54,8 +54,11 @@ class TextReaderActivity : AppCompatActivity() {
     private var key: String? = null
     /** The text being searched for, marked wherever it shows on the screen. */
     private var query: String? = null
-    /** Where the last search found the query, so the next search goes on from there. */
-    private var lastHit: Long? = null
+    /** Every place the query occurs, as byte offsets in order, and which of them the reader is on. */
+    private var hits: LongArray? = null
+    private var hitPos = 0
+    private lateinit var searchRow: LinearLayout
+    private lateinit var searchCount: TextView
     private var readAloud: ReadAloud? = null
     private var seeking = false
     private var textSizeSp = 18f
@@ -159,10 +162,38 @@ class TextReaderActivity : AppCompatActivity() {
             addView(next, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(settingsButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
+        searchCount = TextView(this).apply {
+            setTextColor(ink)
+            textSize = 14f
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), 0, dp(4), 0)
+        }
+        val searchPrevious = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
+            text = getString(R.string.search_previous)
+            setOnClickListener { stepHit(-1) }
+        }
+        val searchNext = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
+            text = getString(R.string.search_next)
+            setOnClickListener { stepHit(1) }
+        }
+        val searchClose = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
+            text = getString(R.string.search_close)
+            setOnClickListener { clearSearch() }
+        }
+        searchRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            addView(searchCount, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(searchPrevious, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(searchNext, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(searchClose, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
         val bottom = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(ground)
-            addView(progressRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(searchRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(progressRow,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(controlRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         root.addView(toolbar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -465,26 +496,74 @@ class TextReaderActivity : AppCompatActivity() {
             .show()
     }
 
-    /** Finds the next place [q] occurs after the last hit, or after the top of the screen for a new query. */
+    /**
+     * Counts every place [q] occurs in the whole file, then goes to the first one after the top of the
+     * screen. The bar shows "current / total", and its buttons step through the hits in both directions.
+     */
     private fun find(q: String) {
         val idx = index ?: return
         if (q.isEmpty()) return
         val needle = q.toByteArray(idx.charset)
-        val from = if (q == query && lastHit != null) lastHit!! + 1 else topByte() + 1
+        val start = topByte()
+        searchCount.text = getString(R.string.search_counting)
+        searchRow.visibility = View.VISIBLE
         worker.execute {
-            val at = runCatching { idx.find(needle, from) }.getOrNull()
+            val found = runCatching { allHits(idx, needle) }.getOrNull()
             runOnUiThread {
                 if (isDestroyed) return@runOnUiThread
-                if (at == null) {
+                if (found == null || found.isEmpty()) {
+                    clearSearch()
                     Toast.makeText(this, R.string.text_search_none, Toast.LENGTH_SHORT).show()
                     return@runOnUiThread
                 }
                 query = q
-                lastHit = at
+                hits = found
+                hitPos = found.indexOfFirst { it >= start }.let { if (it < 0) 0 else it }
                 adapter.notifyDataSetChanged()
-                jumpToByte(at)
+                showHit()
             }
         }
+    }
+
+    /** Every byte offset [needle] occurs at, in order, stopping at [MAX_HITS]. Runs off the main thread. */
+    private fun allHits(idx: TextIndex, needle: ByteArray): LongArray {
+        val found = ArrayList<Long>()
+        var from = 0L
+        while (found.size < MAX_HITS) {
+            val at = idx.find(needle, from) ?: break
+            // The index searches on round to the start when nothing is left after [from]: that is the end
+            if (at < from) break
+            found.add(at)
+            from = at + 1
+        }
+        return found.toLongArray()
+    }
+
+    /** Goes to the hit the reader is on and shows its number out of the total. */
+    private fun showHit() {
+        val all = hits ?: return
+        jumpToByte(all[hitPos])
+        searchCount.text = if (all.size >= MAX_HITS) {
+            getString(R.string.search_count_many, hitPos + 1)
+        } else {
+            getString(R.string.search_count, hitPos + 1, all.size)
+        }
+    }
+
+    private fun stepHit(delta: Int) {
+        val all = hits ?: return
+        hitPos = (hitPos + delta + all.size) % all.size
+        showHit()
+        adapter.notifyDataSetChanged()
+    }
+
+    /** Takes the search off: the highlights go and the bar with them. */
+    private fun clearSearch() {
+        query = null
+        hits = null
+        hitPos = 0
+        searchRow.visibility = View.GONE
+        adapter.notifyDataSetChanged()
     }
 
     private fun addBookmark() {
@@ -507,28 +586,11 @@ class TextReaderActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.no_bookmarks, Toast.LENGTH_SHORT).show()
             return
         }
-        val labels = marks.mapIndexed { i, mark ->
-            if (mark.label.isEmpty()) getString(R.string.bookmark_item, i + 1) else "${i + 1}. ${mark.label}"
-        }.toTypedArray()
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.bookmarks)
-            .setItems(labels) { _, which -> jumpToByte(marks[which].at) }
-            .setNeutralButton(R.string.bookmark_remove) { _, _ -> removeBookmark(k) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun removeBookmark(k: String) {
-        val marks = Marks.bookmarks(this, k)
-        if (marks.isEmpty()) return
-        val labels = marks.mapIndexed { i, mark ->
-            if (mark.label.isEmpty()) getString(R.string.bookmark_item, i + 1) else "${i + 1}. ${mark.label}"
-        }.toTypedArray()
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.bookmark_remove)
-            .setItems(labels) { _, which -> Marks.remove(this, k, marks[which].at) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        BookmarkList.show(
+            this, k, R.string.bookmarks,
+            label = { i, mark -> if (mark.label.isEmpty()) getString(R.string.bookmark_item, i + 1) else "${i + 1}. ${mark.label}" },
+            onJump = { jumpToByte(it.at) },
+        )
     }
 
     /** Asks for a page number and goes to its first row. The count is an estimate from the row height. */
@@ -638,6 +700,8 @@ class TextReaderActivity : AppCompatActivity() {
         const val PREFS = "text_reader"
         const val KEY_SIZE = "size_sp"
         const val READ_AHEAD_CHARS = 200_000
+        /** How many hits a search counts before it says "10000개 이상" and stops looking. */
+        const val MAX_HITS = 10_000
         const val ID_SEARCH = 1
         const val ID_BOOKMARK_ADD = 2
         const val ID_BOOKMARKS = 3

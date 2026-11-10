@@ -152,6 +152,12 @@
     <string name="text_unreadable">이 텍스트를 읽을 수 없습니다.</string>
     <string name="text_truncated">파일이 커서 앞의 %1$dMB까지만 읽었습니다.</string>
     <string name="text_search_none">찾는 말이 없습니다.</string>
+    <string name="search_counting">세는 중…</string>
+    <string name="search_count">%1$d / %2$d</string>
+    <string name="search_count_many">%1$d / 10000개 이상</string>
+    <string name="search_previous">이전</string>
+    <string name="search_next">다음</string>
+    <string name="search_close">닫기</string>
     <string name="read_aloud">읽어주기</string>
     <string name="stop_reading">읽기 멈추기</string>
     <string name="nothing_to_read">읽을 글자가 없습니다.</string>
