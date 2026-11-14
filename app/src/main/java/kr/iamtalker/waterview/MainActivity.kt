@@ -360,6 +360,12 @@ class MainActivity : AppCompatActivity() {
             dialog.dismiss()
             openBundledPage(FILE_TYPES_ASSET, R.string.file_types_file_name, R.string.file_types_failed)
         }
+        view.findViewById<View>(R.id.aboutBook).setOnClickListener {
+            dialog.dismiss()
+            openBundledPage(BOOK_ASSET, R.string.book_file_name, R.string.book_failed)
+        }
+        view.findViewById<View>(R.id.aboutBookStore)
+            .setOnClickListener { openUrl(getString(R.string.url_book)) }
         view.findViewById<View>(R.id.aboutLicences).setOnClickListener {
             dialog.dismiss()
             openBundledPage(LICENCES_ASSET, R.string.licences_file_name, R.string.licences_failed)
@@ -627,6 +633,9 @@ class MainActivity : AppCompatActivity() {
 
         /** Every extension WaterView opens, by kind. FileKindTest holds it to the extension table. */
         const val FILE_TYPES_ASSET = "file_types.md"
+
+        /** The author's book: its introduction, author and contents, shown offline. */
+        const val BOOK_ASSET = "book.md"
 
         /** How long a folder may take to read before the screen says anything about it. */
         const val RENDER_PROGRESS_DELAY_MS = 150L

@@ -95,6 +95,32 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/aboutBook"
+            style="@style/Widget.WaterView.About.Row">
+
+            <TextView
+                style="@style/Widget.WaterView.About.Row.Title"
+                android:text="@string/about_book" />
+
+            <TextView
+                style="@style/Widget.WaterView.About.Row.Subtitle"
+                android:text="@string/about_book_detail" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/aboutBookStore"
+            style="@style/Widget.WaterView.About.Row">
+
+            <TextView
+                style="@style/Widget.WaterView.About.Row.Title"
+                android:text="@string/about_book_store" />
+
+            <TextView
+                style="@style/Widget.WaterView.About.Row.Subtitle"
+                android:text="@string/about_book_store_detail" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/aboutAuthor"
             style="@style/Widget.WaterView.About.Row">
 

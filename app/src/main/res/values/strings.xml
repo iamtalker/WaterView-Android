@@ -218,6 +218,13 @@
     <string name="about_licences">오픈소스 라이선스</string>
     <string name="about_licences_detail">포함된 라이브러리의 전체 라이선스 보기</string>
     <string name="about_copyright" translatable="false">물뷰 안드로이드 버전은 MIT 라이선스를 따릅니다. 필요한 제3자 고지는 오픈소스 라이선스 문서에 포함되어 있습니다.</string>
+    <string name="about_book">책 소개</string>
+    <string name="about_book_detail">자유로의 초대 · iamtalker</string>
+    <string name="about_book_store">서점에서 보기</string>
+    <string name="about_book_store_detail">부크크에서 책 페이지 열기</string>
+    <string name="url_book" translatable="false">https://bookk.co.kr/bookStore/6af3769e04f230844ed9303c</string>
+    <string name="book_file_name" translatable="false">자유로의 초대.md</string>
+    <string name="book_failed">책 소개를 열 수 없습니다.</string>
     <string name="about_close">닫기</string>
     <string name="no_browser">링크를 열 수 있는 앱이 없습니다.</string>
     <!-- Each becomes the viewer's title, so it reads as the document it is -->
